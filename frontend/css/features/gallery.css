@@ -1,0 +1,9 @@
+/* Gallery and thumbnail overlays */
+.thumb-overlay { 
+    opacity: 0; 
+    transition: opacity 0.2s; 
+}
+
+.gallery-thumb:hover .thumb-overlay { 
+    opacity: 1; 
+}

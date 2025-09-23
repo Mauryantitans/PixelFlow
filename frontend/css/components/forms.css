@@ -1,0 +1,91 @@
+/* Form controls and inputs */
+
+/* Toggle switches */
+.toggle-checkbox:checked { 
+    right: 0; 
+    border-color: #a1a1aa; 
+}
+
+.toggle-checkbox:checked + .toggle-label { 
+    background-color: #52525b; 
+}
+
+.toggle-checkbox:disabled + .toggle-label { 
+    background-color: #d4d4d8; 
+    cursor: not-allowed; 
+}
+
+.dark .toggle-checkbox:checked + .toggle-label { 
+    background-color: #71717a; 
+}
+
+.dark .toggle-checkbox:disabled + .toggle-label { 
+    background-color: #3f3f46; 
+}
+
+/* Parameter sliders */
+.param-slider { 
+    -webkit-appearance: none; 
+    appearance: none; 
+    width: 100%; 
+    height: 4px; 
+    outline: none; 
+    border-radius: 2px;
+    background: #d4d4d8;
+}
+
+.param-slider::-webkit-slider-thumb { 
+    -webkit-appearance: none; 
+    appearance: none; 
+    width: 16px; 
+    height: 16px; 
+    cursor: pointer; 
+    border-radius: 50%;
+    background: #3f3f46;
+}
+
+.param-slider::-moz-range-thumb { 
+    width: 16px; 
+    height: 16px; 
+    cursor: pointer; 
+    border-radius: 50%;
+    background: #3f3f46;
+}
+
+.dark .param-slider { 
+    background: #52525b; 
+}
+
+.dark .param-slider::-webkit-slider-thumb { 
+    background: #e5e7eb; 
+}
+
+.dark .param-slider::-moz-range-thumb { 
+    background: #e5e7eb; 
+}
+
+ .param-slider { 
+    background: #d4d4d8; 
+}
+
+.param-slider::-webkit-slider-thumb { 
+    background: #3f3f46; 
+}
+        
+.param-slider::-moz-range-thumb { 
+    background: #3f3f46; 
+}
+
+/* Select dropdowns */
+.param-select { 
+    background-color: #e4e4e7; 
+    border: 1px solid #d4d4d8; 
+    color: #18181b; 
+}
+
+.dark .param-select { 
+    background-color: #3f3f46; 
+    border: 1px solid #52525b; 
+    color: #e5e7eb; 
+}
+

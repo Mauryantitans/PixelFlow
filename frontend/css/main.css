@@ -1,0 +1,18 @@
+/* Main stylesheet - imports all organized CSS modules */
+
+/* Base styles */
+@import url('./base/reset.css');
+
+/* Components */
+@import url('./components/scrollbar.css');
+@import url('./components/forms.css');
+@import url('./components/buttons.css');
+
+/* Layout */
+@import url('./layout/sidebar.css');
+@import url('./layout/grid.css');
+
+/* Features */
+@import url('./features/image-viewer.css');
+@import url('./features/gallery.css');
+@import url('./features/modal.css');

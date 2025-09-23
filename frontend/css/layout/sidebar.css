@@ -1,0 +1,17 @@
+/* Sidebar layout and animations */
+#operations-sidebar { 
+    transition: width 300ms ease-in-out; 
+}
+
+#operations-sidebar.collapsed { 
+    width: 64px; 
+}
+
+#operations-sidebar.collapsed #sidebar-header-content,
+#operations-sidebar.collapsed #sidebar-content { 
+    display: none; 
+}
+
+#sidebar-toggle-btn svg { 
+    transition: transform 300ms ease-in-out; 
+}

@@ -1,0 +1,4 @@
+/* Modal and overlay animations */
+#gallery-modal, #lightbox { 
+    transition: opacity 300ms ease-in-out; 
+}
