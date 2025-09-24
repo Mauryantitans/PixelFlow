@@ -1,0 +1,294 @@
+import axios, { AxiosResponse } from 'axios';
+import {
+  ImageData,
+  ProcessRequest,
+  LiveProcessRequest,
+  ProcessResponse,
+  LiveProcessResponse,
+  UploadResponse,
+  MultipleUploadResponse,
+  APIError
+} from '../types';
+
+// Create axios instance with base configuration
+const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api',
+  timeout: 30000, // 30 second timeout
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor for logging
+api.interceptors.request.use(
+  (config) => {
+    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
+    return config;
+  },
+  (error) => {
+    console.error('API Request Error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => {
+    console.log(`API Response: ${response.status} ${response.config.url}`);
+    return response;
+  },
+  (error) => {
+    console.error('API Response Error:', error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
+
+export class ApiService {
+  /**
+   * Upload a single image
+   */
+  static async uploadImage(file: File, sessionId: string): Promise<UploadResponse> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('session_id', sessionId);
+
+      const response: AxiosResponse<UploadResponse> = await api.post('/images/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Upload error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Upload multiple images
+   */
+  static async uploadMultipleImages(files: File[], sessionId: string): Promise<MultipleUploadResponse> {
+    try {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append('files', file);
+      });
+      formData.append('session_id', sessionId);
+
+      const response: AxiosResponse<MultipleUploadResponse> = await api.post('/images/upload-multiple', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('Multiple upload error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Process images through pipeline (batch mode)
+   */
+  static async processImages(request: ProcessRequest): Promise<ProcessResponse> {
+    try {
+      const response: AxiosResponse<ProcessResponse> = await api.post('/processing/process', request);
+      return response.data;
+    } catch (error: any) {
+      console.error('Process error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Process single image with live updates
+   */
+  static async processLive(request: LiveProcessRequest): Promise<LiveProcessResponse> {
+    try {
+      const response: AxiosResponse<LiveProcessResponse> = await api.post('/processing/process-live', request);
+      return response.data;
+    } catch (error: any) {
+      console.error('Live process error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Get available operations
+   */
+  static async getOperations(): Promise<Record<string, any>> {
+    try {
+      const response = await api.get('/processing/operations');
+      return response.data.operations;
+    } catch (error: any) {
+      console.error('Get operations error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  /**
+   * Clean up session files
+   */
+  static async cleanupSession(sessionId: string): Promise<void> {
+    try {
+      await api.post('/images/cleanup-session', { session_id: sessionId });
+    } catch (error: any) {
+      console.error('Cleanup error:', error);
+      // Don't throw error for cleanup failures
+    }
+  }
+
+  /**
+   * Get session statistics (for debugging)
+   */
+  static async getSessionStats(): Promise<any> {
+    try {
+      const response = await api.get('/images/session-stats');
+      return response.data.stats;
+    } catch (error: any) {
+      console.error('Session stats error:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Health check
+   */
+  static async healthCheck(): Promise<boolean> {
+    try {
+      const response = await api.get('/processing/health');
+      return response.data.success;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Handle API errors and convert to standard format
+   */
+  private static handleError(error: any): Error {
+    if (error.response) {
+      // Server responded with error status
+      const errorData = error.response.data;
+      if (errorData && errorData.message) {
+        return new Error(errorData.message);
+      } else if (errorData && errorData.error) {
+        return new Error(errorData.error);
+      } else {
+        return new Error(`HTTP ${error.response.status}: ${error.response.statusText}`);
+      }
+    } else if (error.request) {
+      // Request made but no response
+      return new Error('Network error: Unable to connect to server');
+    } else {
+      // Something else happened
+      return new Error(error.message || 'An unexpected error occurred');
+    }
+  }
+
+  /**
+   * Send cleanup beacon when page is closing (for reliable cleanup)
+   */
+  static sendCleanupBeacon(sessionId: string): void {
+    try {
+      const formData = new FormData();
+      formData.append('session_id', sessionId);
+      
+      const url = `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/cleanup-session`;
+      
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(url, formData);
+      }
+    } catch (error) {
+      console.error('Beacon cleanup error:', error);
+    }
+  }
+
+  /**
+   * Validate file before upload
+   */
+  static validateFile(file: File): { isValid: boolean; error?: string } {
+    const maxSize = 50 * 1024 * 1024; // 50MB
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/bmp', 'image/tiff'];
+
+    if (file.size > maxSize) {
+      return { isValid: false, error: 'File is too large. Maximum size is 50MB.' };
+    }
+
+    if (!allowedTypes.includes(file.type)) {
+      return { isValid: false, error: 'File type not supported. Please use JPEG, PNG, BMP, or TIFF.' };
+    }
+
+    return { isValid: true };
+  }
+
+  /**
+   * Validate multiple files
+   */
+  static validateFiles(files: File[]): { isValid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    const maxFiles = 20;
+
+    if (files.length > maxFiles) {
+      errors.push(`Too many files. Maximum ${maxFiles} files allowed.`);
+    }
+
+    files.forEach((file, index) => {
+      const validation = this.validateFile(file);
+      if (!validation.isValid) {
+        errors.push(`File ${index + 1} (${file.name}): ${validation.error}`);
+      }
+    });
+
+    return { isValid: errors.length === 0, errors };
+  }
+
+  /**
+   * Convert File to base64 string (for compatibility with legacy code if needed)
+   */
+  static fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result && typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to convert file to base64'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Error reading file'));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Download processed image
+   */
+  static downloadImage(dataUrl: string, filename: string): void {
+    try {
+      const link = document.createElement('a');
+      link.href = dataUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('Download error:', error);
+      throw new Error('Failed to download image');
+    }
+  }
+
+  /**
+   * Generate unique session ID
+   */
+  static generateSessionId(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    return `session_${timestamp}_${random}`;
+  }
+}
+
+export default ApiService;

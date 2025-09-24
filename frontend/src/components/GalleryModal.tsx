@@ -1,0 +1,199 @@
+import React, { useEffect, useRef } from 'react';
+import * as LucideReact from 'lucide-react';
+import { ImageData } from '../types';
+import { MasonryUtils } from '../utils';
+
+interface GalleryModalProps {
+  isOpen: boolean;
+  images: ImageData[];
+  onClose: () => void;
+  onImageSelect: (imageId: string) => void;
+  onImageRemove: (imageId: string) => void;
+  onSelectAll: () => void;
+  onDeselectAll: () => void;
+  onImageView: (imageIndex: number) => void;
+}
+
+const GalleryModal: React.FC<GalleryModalProps> = ({
+  isOpen,
+  images,
+  onClose,
+  onImageSelect,
+  onImageRemove,
+  onSelectAll,
+  onDeselectAll,
+  onImageView
+}) => {
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Apply masonry layout when images change
+  useEffect(() => {
+    if (isOpen && gridRef.current && images.length > 0) {
+      // Small delay to ensure modal is fully rendered
+      const timeoutId = setTimeout(() => {
+        if (gridRef.current) {
+          const thumbs = Array.from(gridRef.current.querySelectorAll('.gallery-thumb')) as HTMLElement[];
+          
+          let loadedCount = 0;
+          const totalImages = thumbs.length;
+
+          const onImageLoad = () => {
+            loadedCount++;
+            if (loadedCount === totalImages && gridRef.current) {
+              MasonryUtils.applyLayout(gridRef.current, thumbs, 120, 16);
+            }
+          };
+
+          thumbs.forEach((thumb) => {
+            const img = thumb.querySelector('img');
+            if (img) {
+              if (img.complete && img.naturalWidth > 0) {
+                onImageLoad();
+              } else {
+                img.addEventListener('load', onImageLoad);
+                img.addEventListener('error', onImageLoad); // Handle failed loads
+              }
+            }
+          });
+        }
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isOpen, images]);
+
+  // Handle escape key
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const selectedCount = images.filter(img => img.selected).length;
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-8">
+      <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl w-full max-w-4xl h-full max-h-[80vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-zinc-700 flex-shrink-0">
+          <h2 className="text-xl font-bold text-zinc-900 dark:text-white">
+            Image Gallery ({images.length})
+          </h2>
+          <div className="flex items-center gap-2">
+            <button onClick={onSelectAll} className="btn-sm">Select All</button>
+            <button onClick={onDeselectAll} className="btn-sm">Deselect All</button>
+            <div className="text-sm text-gray-600 dark:text-gray-400 px-2">
+              {selectedCount} selected
+            </div>
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-zinc-700">
+              <LucideReact.X className="w-6 h-6 text-zinc-800 dark:text-white" />
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Content with Masonry */}
+        <div className="flex-1 min-h-0">
+          {images.length === 0 ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-400 dark:text-gray-500">
+                <LucideReact.Image className="w-16 h-16 mx-auto mb-4" />
+                <p className="font-semibold text-lg mb-2">No images uploaded</p>
+                <p className="text-sm">Upload some images to get started</p>
+              </div>
+            </div>
+          ) : (
+            <div className="h-full overflow-y-auto">
+              <div 
+                ref={gridRef}
+                className="relative p-6"
+                style={{ minHeight: '400px' }}
+              >
+                {images.map((image, index) => (
+                  <div
+                    key={image.id}
+                    className={`gallery-thumb absolute rounded-md overflow-hidden bg-white dark:bg-zinc-800 shadow-sm transition-shadow duration-200 cursor-pointer group ${
+                        image.selected ? 'selected' : ''
+                    }`}
+                    data-id={image.id}
+                    data-image-index={index}
+                    onClick={() => onImageSelect(image.id)}
+                    style={{ width: '120px' }}
+                    >
+                    <div className="relative">
+                        <img
+                        src={image.thumbnailDataUrl || image.dataUrl}
+                        alt={image.filename}
+                        className="w-full h-auto block"
+                        loading="lazy"
+                        />
+                        
+                        {/* Hover Controls - Using group-hover */}
+                        <div className="absolute top-1 left-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
+                        <button
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            onImageView(index);
+                            }}
+                            className="p-1 bg-blue-600/90 text-white rounded hover:bg-blue-700 shadow-lg backdrop-blur-sm"
+                            title="View full size"
+                        >
+                            <LucideReact.ZoomIn className="w-3 h-3" />
+                        </button>
+                        <button
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            onImageRemove(image.id);
+                            }}
+                            className="p-1 bg-red-600/90 text-white rounded hover:bg-red-700 shadow-lg backdrop-blur-sm"
+                            title="Delete image"
+                        >
+                            <LucideReact.Trash2 className="w-3 h-3" />
+                        </button>
+                        </div>
+
+                        {/* Selection Border */}
+                        {image.selected && (
+                        <div className="absolute inset-0 border-4 border-blue-500 rounded-md pointer-events-none"></div>
+                        )}
+
+                        {/* Selection Indicator */}
+                        <div className={`absolute top-1 right-1 bg-blue-600 rounded-full p-1 transition-opacity z-10 ${
+                        image.selected ? 'opacity-100' : 'opacity-0'
+                        }`}>
+                        <LucideReact.Check className="w-3 h-3 text-white" />
+                        </div>
+                    </div>
+
+                    {/* Image Info */}
+                    <div className="p-2">
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate" title={image.filename}>
+                        {image.filename}
+                        </p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                        {image.width} × {image.height}
+                        </p>
+                    </div>
+                    </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default GalleryModal;

@@ -1,1 +1,1 @@
-# Image-App-using-GEMINI
+# Image-App-using-CLAUDE-SONNET-4.0
