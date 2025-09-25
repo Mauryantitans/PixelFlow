@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 async def process_single_image_pipeline(image_path: str, pipeline: List[dict], session_id: str, save_intermediates: bool = False) -> dict:
-    """Process a single image through the entire pipeline"""
+    """Process a single image through the entire pipeline with timing"""
     try:
-        # Apply the pipeline
-        final_image, intermediate_images = ImageProcessor.apply_pipeline(image_path, pipeline)
+        # Use the new timing-aware pipeline method
+        processing_result = ImageProcessor.apply_pipeline_with_timing(image_path, pipeline)
         
         # Get session directories
         session_upload_dir, session_processed_dir = session_manager.create_session_directories(session_id)
@@ -29,22 +29,31 @@ async def process_single_image_pipeline(image_path: str, pipeline: List[dict], s
         # Save final result
         final_dir = session_processed_dir / "final"
         final_path = final_dir / f"{process_id}_final.jpg"
-        ImageProcessor.save_image(final_image, str(final_path))
+        ImageProcessor.save_image(processing_result.final_image, str(final_path))
         
         result = {
-            "final_result": ImageProcessor.image_to_base64(final_image),
-            "final_path": str(final_path)
+            "final_result": ImageProcessor.image_to_base64(processing_result.final_image),
+            "final_path": str(final_path),
+            "total_time": processing_result.total_time,
+            "step_timings": [
+                {
+                    "step_name": detail["name"],
+                    "duration": detail["duration"],
+                    "step_index": detail["step_index"]
+                }
+                for detail in processing_result.step_details
+            ]
         }
         
         # Save intermediate results if requested
-        if save_intermediates and intermediate_images:
+        if save_intermediates and processing_result.intermediate_images:
             intermediate_dir = session_processed_dir / "intermediate" / process_id
             intermediate_dir.mkdir(parents=True, exist_ok=True)
             
             intermediate_base64_list = []
             intermediate_paths = []
             
-            for i, img in enumerate(intermediate_images):
+            for i, img in enumerate(processing_result.intermediate_images):
                 step_path = intermediate_dir / f"step_{i+1}.jpg"
                 ImageProcessor.save_image(img, str(step_path))
                 intermediate_base64_list.append(ImageProcessor.image_to_base64(img))
@@ -83,6 +92,8 @@ async def process_images(request: ProcessRequest):
         
         processed_results = []
         all_intermediate_results = []
+        all_step_timings = []
+        total_batch_time = 0.0
         
         # Process each image
         for image_id in request.image_ids:
@@ -95,7 +106,7 @@ async def process_images(request: ProcessRequest):
             image_path = str(image_files[0])
             
             try:
-                # Process the image
+                # Process the image with timing
                 result = await process_single_image_pipeline(
                     image_path, 
                     [step.dict() for step in request.pipeline], 
@@ -104,24 +115,30 @@ async def process_images(request: ProcessRequest):
                 )
                 
                 processed_results.append(result["final_result"])
+                total_batch_time += result.get("total_time", 0)
                 
                 if "intermediate_results" in result:
                     all_intermediate_results.append(result["intermediate_results"])
                 
+                # Collect step timings
+                if "step_timings" in result:
+                    all_step_timings.extend(result["step_timings"])
+                
             except Exception as e:
                 logger.error(f"Failed to process image {image_id}: {e}")
-                # Continue with other images even if one fails
                 continue
         
         if not processed_results:
             raise HTTPException(status_code=500, detail="Failed to process any images")
         
-        logger.info(f"Successfully processed {len(processed_results)} images")
+        logger.info(f"Successfully processed {len(processed_results)} images in {total_batch_time:.3f}s")
         
         return ProcessResponse(
             success=True,
             processed_images=processed_results,
             intermediate_results=all_intermediate_results if all_intermediate_results else None,
+            total_time=total_batch_time,
+            step_timings=all_step_timings,
             message=f"Successfully processed {len(processed_results)} image(s)"
         )
         
@@ -143,7 +160,7 @@ async def process_live(request: LiveProcessRequest):
         session_manager.update_session_activity(request.session_id)
         
         if not request.pipeline:
-            # If no pipeline, return original image
+            # If no pipeline, return original image with zero timing
             session_upload_dir = settings.UPLOAD_DIR / request.session_id
             image_files = list(session_upload_dir.glob(f"{request.image_id}.*"))
             
@@ -156,6 +173,8 @@ async def process_live(request: LiveProcessRequest):
             return LiveProcessResponse(
                 success=True,
                 results=[original_base64],
+                total_time=0.0,
+                step_timings=[],
                 message="No operations applied - returning original image"
             )
         
@@ -171,7 +190,7 @@ async def process_live(request: LiveProcessRequest):
         
         image_path = str(image_files[0])
         
-        # Process with intermediate results
+        # Process with intermediate results and timing
         result = await process_single_image_pipeline(
             image_path, 
             [step.dict() for step in request.pipeline], 
@@ -187,11 +206,13 @@ async def process_live(request: LiveProcessRequest):
             # If no intermediates, just return the final result
             results.append(result["final_result"])
         
-        logger.info(f"Live processing completed with {len(results)} result steps")
+        logger.info(f"Live processing completed with {len(results)} result steps in {result.get('total_time', 0):.3f}s")
         
         return LiveProcessResponse(
             success=True,
             results=results,
+            total_time=result.get("total_time", 0),
+            step_timings=result.get("step_timings", []),
             message=f"Live processing completed with {len(results)} steps"
         )
         
@@ -205,126 +226,13 @@ async def process_live(request: LiveProcessRequest):
 async def get_available_operations():
     """Get list of available image processing operations"""
     try:
-        operations_config = {
-            'Brightness': {
-                'description': 'Adjust image brightness',
-                'params': [
-                    {
-                        'name': 'amount',
-                        'type': 'slider',
-                        'min': -100,
-                        'max': 100,
-                        'default': 0,
-                        'description': 'Brightness adjustment amount'
-                    }
-                ]
-            },
-            'Contrast': {
-                'description': 'Adjust image contrast',
-                'params': [
-                    {
-                        'name': 'amount',
-                        'type': 'slider',
-                        'min': -100,
-                        'max': 100,
-                        'default': 0,
-                        'description': 'Contrast adjustment amount'
-                    }
-                ]
-            },
-            'Saturation': {
-                'description': 'Adjust color saturation',
-                'params': [
-                    {
-                        'name': 'amount',
-                        'type': 'slider',
-                        'min': -100,
-                        'max': 100,
-                        'default': 0,
-                        'description': 'Saturation adjustment amount'
-                    }
-                ]
-            },
-            'Exposure': {
-                'description': 'Adjust image exposure',
-                'params': [
-                    {
-                        'name': 'amount',
-                        'type': 'slider',
-                        'min': -100,
-                        'max': 100,
-                        'default': 0,
-                        'description': 'Exposure adjustment amount'
-                    }
-                ]
-            },
-            'Gaussian Blur': {
-                'description': 'Apply Gaussian blur effect',
-                'params': [
-                    {
-                        'name': 'radius',
-                        'type': 'slider',
-                        'min': 0,
-                        'max': 50,
-                        'default': 5,
-                        'description': 'Blur radius'
-                    }
-                ]
-            },
-            'Sharpen': {
-                'description': 'Sharpen image details',
-                'params': [
-                    {
-                        'name': 'level',
-                        'type': 'select',
-                        'options': ['Low', 'Medium', 'High'],
-                        'default': 'Medium',
-                        'description': 'Sharpening intensity'
-                    }
-                ]
-            },
-            'Vignette': {
-                'description': 'Add vignette effect',
-                'params': [
-                    {
-                        'name': 'strength',
-                        'type': 'slider',
-                        'min': 0,
-                        'max': 100,
-                        'default': 50,
-                        'description': 'Vignette strength'
-                    }
-                ]
-            },
-            'Grayscale': {
-                'description': 'Convert to grayscale',
-                'params': []
-            },
-            'Sepia': {
-                'description': 'Apply sepia tone effect',
-                'params': []
-            },
-            'Invert': {
-                'description': 'Invert image colors',
-                'params': []
-            },
-            'Solarize': {
-                'description': 'Apply solarization effect',
-                'params': []
-            },
-            'Posterize': {
-                'description': 'Reduce number of colors',
-                'params': []
-            },
-            'Grain': {
-                'description': 'Add film grain effect',
-                'params': []
-            }
-        }
+        # Return the complete operations list from the ImageProcessor
+        operations_list = list(ImageProcessor.OPERATIONS.keys())
         
         return JSONResponse(content={
             "success": True,
-            "operations": operations_config
+            "operations": operations_list,
+            "total_count": len(operations_list)
         })
         
     except Exception as e:
