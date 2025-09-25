@@ -1,6 +1,6 @@
 import React from 'react';
 import * as LucideReact from 'lucide-react';
-import { PipelineStep, DEFAULT_OPERATION_CONFIGS } from '../types';
+import { PipelineStep, ALL_OPERATION_CONFIGS } from '../types';
 
 interface PipelineStepProps {
   step: PipelineStep;
@@ -11,6 +11,8 @@ interface PipelineStepProps {
   onParameterChange: (stepId: string, paramName: string, value: any) => void;
   onPreview: () => void;
   isViewing: boolean;
+  stepTiming?: { duration: number; isAverage?: boolean };
+  onShowDetails: () => void; // Add this
 }
 
 const PipelineStepComponent: React.FC<PipelineStepProps> = ({
@@ -21,9 +23,11 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
   onMove,
   onParameterChange,
   onPreview,
-  isViewing
+  isViewing,
+  stepTiming,
+  onShowDetails // Add this
 }) => {
-  const config = DEFAULT_OPERATION_CONFIGS[step.name];
+  const config = ALL_OPERATION_CONFIGS[step.name];
 
   const handleMoveUp = () => {
     if (index > 0) onMove(index, index - 1);
@@ -97,9 +101,29 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
       {/* Step Content */}
       <div className="flex-grow">
         <div className="flex justify-between items-center mb-2">
-          <h4 className="font-semibold text-zinc-900 dark:text-white">
-            {step.name}
-          </h4>
+          <div className="flex items-center gap-2">
+            <h4 className="font-semibold text-zinc-900 dark:text-white">
+              {step.name}
+            </h4>
+              {/* Info Button */}
+                <button
+                  onClick={onShowDetails}
+                  className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                  title="Method details"
+                >
+                  <LucideReact.Info className="w-4 h-4" />
+                </button>
+            {/* Step Timing Display */}
+            {stepTiming && stepTiming.duration > 0 && (
+              <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full font-mono">
+                {stepTiming.isAverage ? 'avg ' : ''}
+                {stepTiming.duration < 1 
+                  ? `${(stepTiming.duration * 1000).toFixed(0)}ms`
+                  : `${stepTiming.duration.toFixed(2)}s`
+                }
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Parameters */}
@@ -118,26 +142,27 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
       </div>
 
       {/* Action Controls */}
-      <div className="flex flex-col gap-2">
-        <button
-          onClick={onRemove}
-          className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
-          title="Remove step"
-        >
-          <LucideReact.X className="w-5 h-5" />
-        </button>
-        <button
-          onClick={onPreview}
-          className={`transition-colors ${
-            isViewing
-              ? 'text-blue-600 dark:text-blue-400'
-              : 'text-gray-400 hover:text-zinc-800 dark:hover:text-white'
-          }`}
-          title="Preview this step"
-        >
-          <LucideReact.Eye className="w-5 h-5" />
-        </button>
-      </div>
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={onRemove}
+            className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            title="Remove step"
+          >
+            <LucideReact.X className="w-5 h-5" />
+          </button>
+          <button
+            onClick={onPreview}
+            className={`transition-colors ${
+              isViewing
+                ? 'text-blue-600 dark:text-blue-400'
+                : 'text-gray-400 hover:text-zinc-800 dark:hover:text-white'
+            }`}
+            title="Preview this step"
+          >
+            <LucideReact.Eye className="w-5 h-5" />
+          </button>
+          
+        </div>
     </div>
   );
 };
