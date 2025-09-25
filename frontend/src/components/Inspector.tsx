@@ -15,7 +15,15 @@ const Inspector: React.FC<InspectorProps> = ({
   onViewChange,
   onBack
 }) => {
+
   const handleDownload = () => {
+    if (!result.processedUrl) {
+      // This would need to be communicated back to the main app somehow
+      // For now, we'll just handle it locally
+      console.error('No result selected to download');
+      return;
+    }
+    
     const link = document.createElement('a');
     link.href = result.processedUrl;
     link.download = `pixelflow_result_${result.id}.jpg`;
