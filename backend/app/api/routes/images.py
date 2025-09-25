@@ -111,7 +111,7 @@ async def upload_image(
     except Exception as e:
         logger.error(f"Unexpected error during upload: {e}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
-    
+
 @router.post("/upload-multiple")
 async def upload_multiple_images(
     files: List[UploadFile] = File(...),
@@ -153,8 +153,16 @@ async def upload_multiple_images(
                 
                 # Load image to get dimensions and create thumbnail
                 with Image.open(file_path) as img:
+                    # Convert problematic modes early
+                    if img.mode == 'RGBA':
+                        background = Image.new('RGB', img.size, (255, 255, 255))
+                        background.paste(img, mask=img.split()[-1])
+                        img = background
+                    elif img.mode not in ('RGB', 'L'):
+                        img = img.convert('RGB')
+                        
                     width, height = img.size
-                    image_format = img.format or 'JPEG'
+                    image_format = 'JPEG'
                     
                     # Create thumbnail
                     thumbnail_base64 = ImageProcessor.create_thumbnail(img, settings.THUMBNAIL_SIZE)
