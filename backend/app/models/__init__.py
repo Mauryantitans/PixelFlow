@@ -22,6 +22,11 @@ class PipelineStep(BaseModel):
     name: str
     params: Dict[str, Union[int, float, str, bool]] = Field(default_factory=dict)
 
+class ProcessingTiming(BaseModel):
+    step_name: str
+    duration: float  # in seconds
+    step_index: int
+
 class ProcessRequest(BaseModel):
     image_ids: List[str]
     pipeline: List[PipelineStep]
@@ -36,11 +41,15 @@ class ProcessResponse(BaseModel):
     success: bool
     processed_images: List[str] = Field(default_factory=list)
     intermediate_results: Optional[List[List[str]]] = None
+    total_time: float = 0.0
+    step_timings: List[ProcessingTiming] = Field(default_factory=list)
     message: str = "Processing completed successfully"
 
 class LiveProcessResponse(BaseModel):
     success: bool
     results: List[str] = Field(default_factory=list)  # Base64 encoded images for each step
+    total_time: float = 0.0
+    step_timings: List[ProcessingTiming] = Field(default_factory=list)
     message: str = "Live processing completed successfully"
 
 class UploadResponse(BaseModel):
