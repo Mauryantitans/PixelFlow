@@ -14,7 +14,11 @@ import {
 } from './hooks';
 import {
   ProcessedResult,
-  DEFAULT_OPERATION_CONFIGS
+  DEFAULT_OPERATION_CONFIGS,
+  OPENCV_OPERATION_CONFIGS,
+  SCIKIT_OPERATION_CONFIGS,
+  ALL_OPERATION_CONFIGS,
+  StatusMessage
 } from './types';
 import { ApiService } from './services/api';
 import PipelineStepComponent from './components/PipelineStep';
@@ -22,6 +26,7 @@ import ResultsGridComponent from './components/ResultsGrid';
 import Inspector from './components/Inspector';
 import GalleryModal from './components/GalleryModal';
 import './index.css';
+import MethodDetailsModal from './components/MethodDetailsModal';
 
 const App: React.FC = () => {
   const { sessionId } = useSession();
@@ -45,12 +50,17 @@ const App: React.FC = () => {
     removeStep,
     updateStepParam,
     moveStep,
-    resetPipeline
+    resetPipeline,
+    undo,
+    redo,
+    canUndo,
+    canRedo
   } = usePipeline();
   
   const {
     results: liveResults,
     loading: liveLoading,
+    timingData: liveTimingData,
     processLive,
     clearResults: clearLiveResults
   } = useLiveProcessing();
@@ -58,7 +68,9 @@ const App: React.FC = () => {
   const {
     results: batchResults,
     loading: batchLoading,
+    timingData: batchTimingData,
     processBatch,
+    setResultsManually,
     clearResults: clearBatchResults
   } = useBatchProcessing();
   
@@ -72,12 +84,17 @@ const App: React.FC = () => {
   } = useUI();
   
   const galleryModal = useModal();
+  const methodDetailsModal = useModal();
+  const [selectedMethodName, setSelectedMethodName] = useState<string>('');
   
   // State for search functionality
   const [operationSearch, setOperationSearch] = useState('');
   
   // State for selected result in batch mode
  const [selectedResult, setSelectedResult] = useState<ProcessedResult | null>(null);
+
+  // State for processing progress in batch mode
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
 
   // Add this lightbox state here:
   const [lightboxState, setLightboxState] = useState<{
@@ -96,45 +113,53 @@ const App: React.FC = () => {
   const getFilteredOperations = () => {
     if (!operationSearch.trim()) {
       return {
-        'Adjustments': ['Brightness', 'Contrast', 'Saturation', 'Exposure'],
-        'Filters': ['Grayscale', 'Sepia', 'Invert', 'Solarize', 'Posterize'],
-        'Blur & Sharpen': ['Sharpen', 'Gaussian Blur'],
-        'Effects': ['Vignette', 'Grain']
+        'Basic Operations': {
+          'Adjustments': ['Brightness', 'Contrast', 'Saturation', 'Exposure'],
+          'Filters': ['Grayscale', 'Sepia', 'Invert', 'Solarize', 'Posterize'],
+          'Blur & Sharpen': ['Sharpen', 'Gaussian Blur'],
+          'Effects': ['Vignette', 'Grain']
+        },
+        'OpenCV': OPENCV_OPERATION_CONFIGS,
+        'Scikit-Image': SCIKIT_OPERATION_CONFIGS
       };
     }
     
     const searchTerm = operationSearch.toLowerCase();
-    const allOperations = Object.keys(DEFAULT_OPERATION_CONFIGS);
-    const filteredOps = allOperations.filter(op => 
-      op.toLowerCase().includes(searchTerm)
-    );
+    const filteredOps: string[] = [];
+    
+    // Search in all operation configs
+    Object.keys(ALL_OPERATION_CONFIGS).forEach(op => {
+      if (op.toLowerCase().includes(searchTerm)) {
+        filteredOps.push(op);
+      }
+    });
     
     return {
-      'Search Results': filteredOps
+      'Search Results': {
+        'Found Operations': filteredOps
+      }
     };
   };
-  
-  // Handle file upload
+  // Enhanced file upload with feedback
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files?.length) return;
     
     try {
-      // Remove this line: updateStatus('Uploading images...', 'processing');
       const newImages = await addImages(Array.from(files));
+      // Success feedback - temporary
       updateStatus(`Successfully uploaded ${newImages.length} image(s)`, 'success');
     } catch (error: any) {
       updateStatus(`Upload failed: ${error.message}`, 'error');
     }
     
-    // Clear the input
     event.target.value = '';
   };
   
-  // Handle live processing toggle - fixed logic
+  // Enhanced live toggle with feedback
   const handleLiveToggle = (enabled: boolean) => {
     if (enabled && selectedCount !== 1) {
-      updateStatus('Live processing requires exactly one selected image', 'warning');
+      updateStatus('Live processing requires exactly one selected image', 'error');
       return;
     }
     
@@ -145,75 +170,84 @@ const App: React.FC = () => {
     if (enabled) {
       clearBatchResults();
       setSelectedResult(null);
+      // The status will be updated by the useEffect to "Live mode enabled"
       if (selectedImages.length === 1 && pipeline.length > 0) {
-        handleLiveProcess();
+        setTimeout(() => handleLiveProcess(), 100); // Small delay to let UI update
       }
     } else {
       clearLiveResults();
       setViewingStep(-1);
+      // The status will be updated by the useEffect based on current state
     }
   };
   
-  // Handle live processing
+  // Enhanced live processing with feedback
   const handleLiveProcess = async () => {
     if (selectedImages.length !== 1 || !liveProcessingEnabled) return;
     
     try {
+      // Action State - Live processing
+      updateStatus('Processing...', 'processing', true);
+      
       await processLive(selectedImages[0].id, pipeline);
+      
+      // Success State - Live updated
+      updateStatus('Live preview updated', 'success');
+      
     } catch (error: any) {
       updateStatus(`Live processing failed: ${error.message}`, 'error');
     }
   };
 
-  // Handle batch processing
+  // Enhanced batch processing with detailed feedback
   const handleBatchProcess = async () => {
-    console.log('=== BATCH PROCESSING DEBUG ===');
-    console.log('Selected count:', selectedCount);
-    console.log('Pipeline length:', pipeline.length);
-    console.log('Selected images:', selectedImages);
-    
     if (selectedCount === 0) {
-      updateStatus('Please select at least one image', 'warning');
+      updateStatus('Please upload and select at least one image', 'error');
       return;
     }
     
     if (pipeline.length === 0) {
-      updateStatus('Please add at least one operation', 'warning');
+      updateStatus('Please add at least one operation', 'error');
       return;
     }
     
     try {
-      // Remove this line: updateStatus(`Processing ${selectedCount} image(s)...`, 'processing');
-      console.log('Calling processBatch...');
+      // Show initial processing status
+      updateStatus('Processing images...', 'processing', true);
       
+      // Use the actual batch processing endpoint which has timing
       const results = await processBatch(selectedImages.map(img => img.id), pipeline);
-      console.log('processBatch returned:', results);
       
-      // Force view update
+      // Map original URLs to results
+      const resultsWithOriginals = results.map(result => {
+        const originalImage = selectedImages.find(img => img.id === result.id);
+        return {
+          ...result,
+          originalUrl: originalImage?.dataUrl || originalImage?.thumbnailDataUrl || ''
+        };
+      });
+      
+      // Set results and switch to grid view
+      setResultsManually(resultsWithOriginals);
       setCurrentView('grid');
-      console.log('Set current view to grid');
       
-      updateStatus(`Successfully processed ${results.length} image(s)`, 'success');
-      
-      // Log the batch results state
-      setTimeout(() => {
-        console.log('batchResults state after timeout:', batchResults);
-      }, 1000);
+      updateStatus(`Successfully processed ${results.length} image(s). Click a result to inspect.`, 'success');
       
     } catch (error: any) {
-      console.error('Batch processing error:', error);
-      updateStatus(`Processing failed: ${error.message}`, 'error');
+      updateStatus(`Batch processing failed: ${error.message}`, 'error');
     }
   };
   
   // Handle adding operation to pipeline
   const handleAddOperation = (operationName: string) => {
-    const config = DEFAULT_OPERATION_CONFIGS[operationName];
+    const config = ALL_OPERATION_CONFIGS[operationName];
     const params: Record<string, any> = {};
     
-    config.params.forEach(param => {
-      params[param.name] = param.default;
-    });
+    if (config && config.params) {
+      config.params.forEach(param => {
+        params[param.name] = param.default;
+      });
+    }
     
     addStep(operationName, params);
     
@@ -231,6 +265,12 @@ const App: React.FC = () => {
     if (liveProcessingEnabled && selectedImages.length === 1) {
       handleLiveProcess();
     }
+  };
+
+  // Show method details in modal
+  const handleShowMethodDetails = (operationName: string) => {
+    setSelectedMethodName(operationName);
+    methodDetailsModal.openModal();
   };
   
   // Handle result selection in batch mode - fixed to pass proper data
@@ -280,21 +320,49 @@ const App: React.FC = () => {
   useKeyboardShortcuts({
     'ctrl+k': () => document.getElementById('operationSearch')?.focus(),
     'ctrl+/': () => document.getElementById('operationSearch')?.focus(),
+    'ctrl+z': () => canUndo && undo(),
+    'ctrl+y': () => canRedo && redo(),
     'escape': () => {
       if (galleryModal.isOpen) galleryModal.closeModal();
     }
   });
+
+  {/* Method Details Modal */}
+  <MethodDetailsModal
+    isOpen={methodDetailsModal.isOpen}
+    operationName={selectedMethodName}
+    config={ALL_OPERATION_CONFIGS[selectedMethodName]}
+    onClose={methodDetailsModal.closeModal}
+  />
+
+  // Helper function for status colors (using string literals instead of StatusMessage type)
+  const getStatusTextColor = (type: 'info' | 'processing' | 'success' | 'error' | 'warning') => {
+    switch (type) {
+      case 'processing':
+        return 'text-blue-600 dark:text-blue-400';
+      case 'success':
+        return 'text-green-600 dark:text-green-400';
+      case 'error':
+        return 'text-red-600 dark:text-red-400';
+      case 'warning':
+        return 'text-yellow-600 dark:text-yellow-500';
+      case 'info':
+      default:
+        return 'text-zinc-800 dark:text-gray-300';
+    }
+  };
   
   // Update status based on current state
   useEffect(() => {
+    // User Guidance States (Default/Persistent)
     if (liveProcessingEnabled) {
       updateStatus('Live mode enabled', 'info', true);
     } else if (images.length === 0) {
-      updateStatus('Upload images to start', 'info', true);
+      updateStatus('Upload an image to start', 'info', true);
     } else if (selectedCount === 0) {
       updateStatus('Select images from the gallery to process', 'warning', true);
     } else if (pipeline.length === 0) {
-      updateStatus('Add operations to build your pipeline', 'info', true);
+      updateStatus('Add an operation to build your pipeline', 'info', true);
     } else {
       updateStatus(`Ready to process ${selectedCount} image(s)`, 'info', true);
     }
@@ -310,8 +378,35 @@ const App: React.FC = () => {
       return () => clearTimeout(timeoutId);
     }
   }, [pipeline, liveProcessingEnabled, selectedImages.length]);
-  
-  // Add this useEffect near other useEffects in App.tsx
+
+  useEffect(() => {
+    const handleDetailsToggle = () => {
+      const allDetails = document.querySelectorAll('details');
+      allDetails.forEach(details => {
+        if (details.open) {
+          details.classList.add('details-open');
+        } else {
+          details.classList.remove('details-open');
+        }
+      });
+    };
+
+    // Listen for details toggle events
+    const allDetails = document.querySelectorAll('details');
+    allDetails.forEach(details => {
+      details.addEventListener('toggle', handleDetailsToggle);
+    });
+
+    // Initial setup
+    handleDetailsToggle();
+
+    return () => {
+      allDetails.forEach(details => {
+        details.removeEventListener('toggle', handleDetailsToggle);
+      });
+    };
+  }, []);
+
   useEffect(() => {
     if (lightboxState.isOpen) {
       const container = document.querySelector('.zoom-container') as HTMLElement;
@@ -432,30 +527,74 @@ const App: React.FC = () => {
               <LucideReact.Search className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
             </div>
             
-            {/* Operations List */}
-              <div className="flex-grow overflow-y-auto space-y-2">
-                {Object.entries(filteredOperationGroups).map(([groupName, operations], groupIndex) => (
-                  <details 
-                    key={groupName} 
-                    open={groupIndex < 2} // Only first 2 groups open by default
-                    className="operation-group"
-                  >
-                    <summary className="cursor-pointer font-semibold text-zinc-900 dark:text-white flex justify-between items-center py-2">
-                      {groupName}
-                      <LucideReact.ChevronDown className="w-5 h-5" />
-                    </summary>
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      {operations.map((op: string) => (
-                        <button
-                          key={op}
-                          onClick={() => handleAddOperation(op)}
-                          className="operation-btn"
-                        >
-                          {op}
-                        </button>
-                      ))}
-                    </div>
-                  </details>
+            {/* Enhanced Operations List */}
+              <div className="flex-grow overflow-y-auto space-y-1 pr-1">
+                {Object.entries(getFilteredOperations()).map(([libraryName, libraryCategories], libraryIndex) => (
+                  <div key={libraryName} className={`library-container ${
+                    libraryName === 'OpenCV' ? 'library-opencv' : 
+                    libraryName === 'Scikit-Image' ? 'library-scikit' : 
+                    'library-basic'
+                  }`}>
+                    <details open={libraryIndex < 1} className="operation-group">
+                      <summary className="library-header">
+                        <div className="flex items-center">
+                          {libraryName === 'OpenCV' && <LucideReact.Camera className="library-icon" />}
+                          {libraryName === 'Scikit-Image' && <LucideReact.Microscope className="library-icon" />}
+                          {libraryName === 'Basic Operations' && <LucideReact.Sliders className="library-icon" />}
+                          {libraryName === 'Search Results' && <LucideReact.Search className="library-icon" />}
+                          {libraryName}
+                        </div>
+                        <LucideReact.ChevronDown className="chevron-icon" />
+                      </summary>
+                      
+                      <div className="space-y-2 mt-2">
+                        {Object.entries(libraryCategories as Record<string, any>).map(([categoryName, operations], categoryIndex) => (
+                          <div key={categoryName} className="category-container">
+                            <details open={categoryIndex < 2} className="operation-group">
+                              <summary className="category-header">
+                                <div className="flex items-center">
+                                  {/* Category icons based on name */}
+                                  {categoryName === 'Adjustments' && <LucideReact.SlidersHorizontal className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Filters' && <LucideReact.Filter className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Blur & Sharpen' && <LucideReact.Focus className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Effects' && <LucideReact.Sparkles className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Filtering' && <LucideReact.Grid className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Edge Detection' && <LucideReact.Scan className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Enhancement' && <LucideReact.Sun className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Restoration' && <LucideReact.Wrench className="w-3 h-3 mr-1" />}
+                                  {categoryName === 'Found Operations' && <LucideReact.Search className="w-3 h-3 mr-1" />}
+                                  {!['Adjustments', 'Filters', 'Blur & Sharpen', 'Effects', 'Filtering', 'Edge Detection', 'Enhancement', 'Restoration', 'Found Operations'].includes(categoryName) && 
+                                  <LucideReact.Folder className="w-3 h-3 mr-1" />}
+                                  <span className="text-gray-700 dark:text-gray-300">{categoryName}</span>
+                                </div>
+                                <LucideReact.ChevronDown className="w-3 h-3 chevron-icon" />
+                              </summary>
+                              
+                              <div className="grid grid-cols-2 gap-1.5 mt-2">
+                                {(Array.isArray(operations) 
+                                  ? operations 
+                                  : Object.keys(operations as Record<string, any>)
+                                ).map((op: string) => (
+                                  <button
+                                    key={op}
+                                    onClick={() => handleAddOperation(op)}
+                                    className="operation-btn-enhanced group"
+                                  >
+                                    {op}
+                                    {ALL_OPERATION_CONFIGS[op]?.description && (
+                                      <div className="operation-tooltip">
+                                        {ALL_OPERATION_CONFIGS[op].description}
+                                      </div>
+                                    )}
+                                  </button>
+                                ))}
+                              </div>
+                            </details>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  </div>
                 ))}
               </div>
           </div>
@@ -495,14 +634,15 @@ const App: React.FC = () => {
             </button>
           </div>
 
-          {/* Status Display - Moved here */}
+          {/* Status Display */}
           <div className="flex-1 text-center px-4">
             {status.text && (
-              <span className={`text-sm flex items-center justify-center gap-2 status-${status.type}`}>
+              <span className={`text-sm flex items-center justify-center gap-2 transition-colors duration-200 font-medium ${getStatusTextColor(status.type)}`}>
                 {status.type === 'processing' && <LucideReact.Loader2 className="w-4 h-4 animate-spin" />}
                 {status.type === 'success' && <LucideReact.CheckCircle className="w-4 h-4" />}
                 {status.type === 'error' && <LucideReact.AlertTriangle className="w-4 h-4" />}
                 {status.type === 'warning' && <LucideReact.AlertCircle className="w-4 h-4" />}
+                {status.type === 'info' && status.text.includes('Live mode') && <LucideReact.Zap className="w-4 h-4" />}
                 {status.text}
               </span>
             )}
@@ -537,52 +677,106 @@ const App: React.FC = () => {
         {/* Content Area */}
         <div className="flex-1 p-6 flex flex-col gap-6">
           {/* Pipeline Section */}
-          <div className="bg-white dark:bg-zinc-900/80 rounded-lg p-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
-                Pipeline ({pipeline.length} steps)
-              </h3>
-              <button
-                onClick={resetPipeline}
-                className="text-sm text-gray-500 dark:text-gray-400 hover:text-zinc-800 dark:hover:text-white transition-colors flex items-center gap-1"
-              >
-                <LucideReact.RotateCcw className="w-3 h-3" />
-                Reset
-              </button>
-            </div>
-            
-            <div className="space-y-2">
-              {pipeline.length === 0 ? (
-                <p className="text-sm text-center py-4 text-gray-500">
-                  Add operations from the left panel
-                </p>
-              ) : (
-                pipeline.map((step, index) => (
-                  <PipelineStepComponent
-                    key={step.id}
-                    step={step}
-                    index={index}
-                    totalSteps={pipeline.length}
-                    onRemove={() => removeStep(index)}
-                    onMove={moveStep}
-                    onParameterChange={handleParameterChange}
-                    onPreview={() => {
-                      if (liveProcessingEnabled) {
-                        setViewingStep(ui.viewingStepIndex === index ? -1 : index);
-                        // Trigger live processing if not already viewing this step
-                        if (ui.viewingStepIndex !== index) {
-                          handleLiveProcess();
-                        }
-                      } else {
-                        updateStatus('Enable live processing to preview individual steps', 'info');
+            <div className="bg-white dark:bg-zinc-900/80 rounded-lg p-4">
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center gap-4">
+                  <h3 className="text-lg font-bold text-zinc-900 dark:text-white">
+                    Pipeline ({pipeline.length} steps)
+                  </h3>
+                  {/* Timing Display */}
+                  {((liveProcessingEnabled && liveTimingData.total_time > 0) || (!liveProcessingEnabled && batchTimingData.total_time > 0)) && (
+                    <div className="bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200 px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1">
+                      <LucideReact.Clock className="w-3 h-3" />
+                      {liveProcessingEnabled 
+                        ? `${(liveTimingData.total_time * 1000).toFixed(0)}ms`
+                        : `${(batchTimingData.total_time).toFixed(2)}s total`
                       }
-                    }}
-                    isViewing={ui.viewingStepIndex === index}
-                  />
-                ))
-              )}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={undo}
+                    disabled={!canUndo}
+                    className="text-sm text-gray-500 dark:text-gray-400 hover:text-zinc-800 dark:hover:text-white transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Undo (Ctrl+Z)"
+                  >
+                    <LucideReact.Undo2 className="w-3 h-3" />
+                    Undo
+                  </button>
+                  <button
+                    onClick={redo}
+                    disabled={!canRedo}
+                    className="text-sm text-gray-500 dark:text-gray-400 hover:text-zinc-800 dark:hover:text-white transition-colors flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Redo (Ctrl+Y)"
+                  >
+                    <LucideReact.Redo2 className="w-3 h-3" />
+                    Redo
+                  </button>
+                  <div className="w-px h-4 bg-gray-300 dark:bg-zinc-700"></div>
+                  <button
+                    onClick={resetPipeline}
+                    className="text-sm text-gray-500 dark:text-gray-400 hover:text-zinc-800 dark:hover:text-white transition-colors flex items-center gap-1"
+                  >
+                    <LucideReact.RotateCcw className="w-3 h-3" />
+                    Reset
+                  </button>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                {pipeline.length === 0 ? (
+                  <p className="text-sm text-center py-4 text-gray-500">
+                    Add operations from the left panel
+                  </p>
+                ) : (
+                  pipeline.map((step, index) => {
+                    // Calculate step timing
+                    let stepTiming: { duration: number; isAverage?: boolean } | undefined;
+                    
+                    if (liveProcessingEnabled && liveTimingData.step_timings.length > 0) {
+                      const timing = liveTimingData.step_timings.find(t => t.step_index === index);
+                      if (timing) {
+                        stepTiming = { duration: timing.duration };
+                      }
+                    } else if (!liveProcessingEnabled && batchTimingData.step_timings.length > 0) {
+                      // Calculate average for batch processing
+                      const stepTimings = batchTimingData.step_timings.filter(t => t.step_name === step.name);
+                      if (stepTimings.length > 0) {
+                        const avgDuration = stepTimings.reduce((sum, t) => sum + t.duration, 0) / stepTimings.length;
+                        stepTiming = { duration: avgDuration, isAverage: stepTimings.length > 1 };
+                      }
+                    }
+                    
+                    return (
+                      <PipelineStepComponent
+                        key={step.id}
+                        step={step}
+                        index={index}
+                        totalSteps={pipeline.length}
+                        onRemove={() => removeStep(index)}
+                        onMove={moveStep}
+                        onParameterChange={handleParameterChange}
+                        onPreview={() => {
+                          if (liveProcessingEnabled) {
+                            setViewingStep(ui.viewingStepIndex === index ? -1 : index);
+                            if (ui.viewingStepIndex !== index) {
+                              handleLiveProcess();
+                            }
+                          } else {
+                            updateStatus('Enable live processing to preview individual steps', 'info');
+                          }
+                        }}
+                        isViewing={ui.viewingStepIndex === index}
+                        stepTiming={stepTiming}
+                        onShowDetails={() => handleShowMethodDetails(step.name)}
+                      />
+                    );
+                  })
+                )}
+              </div>
             </div>
-          </div>
           
           {/* Results Section */}
           <div className="flex-1 bg-white dark:bg-black rounded-lg border-2 border-dashed border-gray-300 dark:border-zinc-700 flex flex-col">
@@ -727,6 +921,15 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+
+          {/* Method Details Modal */}
+          <MethodDetailsModal
+            isOpen={methodDetailsModal.isOpen}
+            operationName={selectedMethodName}
+            config={ALL_OPERATION_CONFIGS[selectedMethodName]}
+            onClose={methodDetailsModal.closeModal}
+          />
+
       </div>  // <-- This is still the closing div for the main app container
   );
 };
