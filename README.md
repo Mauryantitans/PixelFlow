@@ -8,7 +8,7 @@
 
 PixelFlow eliminates the need for manual parameter tuning by providing **real-time visual feedback** and extensive operation libraries from **OpenCV** and **Scikit-Image**.
 
-![PixelFlow Demo](https://via.placeholder.com/800x400/1f2937/ffffff?text=PixelFlow+Demo)
+![PixelFlow Demo](PixelFlow.png)
 
 ---
 
@@ -697,3 +697,4 @@ def apply_new_operation(image: Image.Image, param1: int, param2: str) -> Image.I
 **⭐ Star this repository if PixelFlow helps your projects! ⭐**
 
 </div>
+
