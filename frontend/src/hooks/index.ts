@@ -6,6 +6,7 @@ import {
   ProcessedResult, 
   UIState,
   ProcessingCache,
+  ProcessingTiming,  // Add this import
   DEBOUNCE_DELAY 
 } from '../types';
 import { ApiService } from '../services/api';
@@ -69,8 +70,11 @@ export function useStatus() {
     clearTimeout(timeoutRef.current);
     setStatus({ text, type, persistent });
     
-    if (!persistent && ['success', 'error', 'warning'].includes(type)) {
+    // Clear success/error messages after 4 seconds, but keep persistent messages
+    if (!persistent && ['success', 'error'].includes(type)) {
       timeoutRef.current = setTimeout(() => {
+        // Don't clear the message, instead trigger a re-evaluation of the default state
+        // This will be handled by the useEffect in App.tsx
         setStatus({ text: '', type: 'info' });
       }, 4000);
     }
@@ -200,6 +204,29 @@ export function useImages() {
  */
 export function usePipeline() {
   const [pipeline, setPipeline] = useState<PipelineStep[]>([]);
+  const [history, setHistory] = useState<PipelineStep[][]>([[]]);
+  const [historyIndex, setHistoryIndex] = useState(0);
+  
+  const saveToHistory = useCallback((newPipeline: PipelineStep[]) => {
+    // Don't save if pipeline hasn't actually changed
+    const currentPipeline = history[historyIndex] || [];
+    if (JSON.stringify(currentPipeline) === JSON.stringify(newPipeline)) {
+      return;
+    }
+    
+    // Remove any future history when making a new change
+    const newHistory = history.slice(0, historyIndex + 1);
+    newHistory.push([...newPipeline]);
+    
+    // Limit history to last 50 actions to prevent memory issues
+    if (newHistory.length > 50) {
+      newHistory.shift();
+    } else {
+      setHistoryIndex(newHistory.length - 1);
+    }
+    
+    setHistory(newHistory);
+  }, [history, historyIndex]);
   
   const addStep = useCallback((operationName: string, params: Record<string, any> = {}) => {
     const newStep: PipelineStep = {
@@ -207,33 +234,59 @@ export function usePipeline() {
       name: operationName,
       params
     };
-    setPipeline(prev => [...prev, newStep]);
-  }, []);
+    const newPipeline = [...pipeline, newStep];
+    setPipeline(newPipeline);
+    saveToHistory(newPipeline);
+  }, [pipeline, saveToHistory]);
   
   const removeStep = useCallback((index: number) => {
-    setPipeline(prev => prev.filter((_, i) => i !== index));
-  }, []);
+    const newPipeline = pipeline.filter((_, i) => i !== index);
+    setPipeline(newPipeline);
+    saveToHistory(newPipeline);
+  }, [pipeline, saveToHistory]);
   
   const updateStepParam = useCallback((stepId: string, paramName: string, value: any) => {
-    setPipeline(prev => prev.map(step => 
+    const newPipeline = pipeline.map(step => 
       step.id === stepId 
         ? { ...step, params: { ...step.params, [paramName]: value } }
         : step
-    ));
-  }, []);
+    );
+    setPipeline(newPipeline);
+    saveToHistory(newPipeline);
+  }, [pipeline, saveToHistory]);
   
   const moveStep = useCallback((fromIndex: number, toIndex: number) => {
-    setPipeline(prev => {
-      const newPipeline = [...prev];
-      const [movedStep] = newPipeline.splice(fromIndex, 1);
-      newPipeline.splice(toIndex, 0, movedStep);
-      return newPipeline;
-    });
-  }, []);
+    const newPipeline = [...pipeline];
+    const [movedStep] = newPipeline.splice(fromIndex, 1);
+    newPipeline.splice(toIndex, 0, movedStep);
+    setPipeline(newPipeline);
+    saveToHistory(newPipeline);
+  }, [pipeline, saveToHistory]);
   
   const resetPipeline = useCallback(() => {
-    setPipeline([]);
-  }, []);
+    const newPipeline: PipelineStep[] = [];
+    setPipeline(newPipeline);
+    saveToHistory(newPipeline);
+  }, [saveToHistory]);
+  
+  const undo = useCallback(() => {
+    if (historyIndex > 0) {
+      const newIndex = historyIndex - 1;
+      setHistoryIndex(newIndex);
+      setPipeline([...history[newIndex]]);
+    }
+  }, [history, historyIndex]);
+  
+  const redo = useCallback(() => {
+    if (historyIndex < history.length - 1) {
+      const newIndex = historyIndex + 1;
+      setHistoryIndex(newIndex);
+      setPipeline([...history[newIndex]]);
+    }
+  }, [history, historyIndex]);
+  
+  const canUndo = historyIndex > 0;
+  const canRedo = historyIndex < history.length - 1;
   
   const generatePipelineHash = useCallback((imageIds: string[]) => {
     return JSON.stringify({
@@ -249,10 +302,13 @@ export function usePipeline() {
     updateStepParam,
     moveStep,
     resetPipeline,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     generatePipelineHash
   };
 }
-
 /**
  * Live processing hook with caching
  */
@@ -260,6 +316,7 @@ export function useLiveProcessing() {
   const [results, setResults] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [cache, setCache] = useState<ProcessingCache | null>(null);
+  const [timingData, setTimingData] = useState<{ total_time: number; step_timings: ProcessingTiming[] }>({ total_time: 0, step_timings: [] });
   const { sessionId } = useSession();
   const abortControllerRef = useRef<AbortController>();
   
@@ -269,14 +326,13 @@ export function useLiveProcessing() {
       abortControllerRef.current.abort();
     }
     
-    // Create new abort controller
     abortControllerRef.current = new AbortController();
     
     const pipelineHash = JSON.stringify({ imageId, pipeline });
     
     // Check cache
     if (cache && cache.pipelineHash === pipelineHash && 
-        Date.now() - cache.timestamp < 10 * 60 * 1000) { // 10 minutes
+        Date.now() - cache.timestamp < 10 * 60 * 1000) {
       setResults(cache.results);
       return cache.results;
     }
@@ -291,11 +347,17 @@ export function useLiveProcessing() {
       
       if (response.success) {
         setResults(response.results);
+        setTimingData({
+          total_time: response.total_time || 0,
+          step_timings: response.step_timings || []
+        });
+        
         setCache({
           pipelineHash,
           results: response.results,
           timestamp: Date.now()
         });
+        
         return response.results;
       } else {
         throw new Error(response.message);
@@ -337,6 +399,7 @@ export function useLiveProcessing() {
   return {
     results,
     loading,
+    timingData,
     processLive: debouncedProcessLive,
     clearResults,
     invalidateCache
@@ -349,11 +412,13 @@ export function useLiveProcessing() {
 export function useBatchProcessing() {
   const [results, setResults] = useState<ProcessedResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [timingData, setTimingData] = useState<{ total_time: number; step_timings: ProcessingTiming[] }>({ total_time: 0, step_timings: [] });
   const { sessionId } = useSession();
   
   const processBatch = useCallback(async (imageIds: string[], pipeline: PipelineStep[]) => {
     setLoading(true);
-    setResults([]); // Clear previous results
+    setResults([]);
+    setTimingData({ total_time: 0, step_timings: [] });
     
     try {
       const response = await ApiService.processImages({
@@ -365,34 +430,46 @@ export function useBatchProcessing() {
       if (response.success && response.processed_images) {
         const processedResults: ProcessedResult[] = response.processed_images.map((processedUrl, index) => ({
           id: imageIds[index],
-          originalUrl: '', // Will be filled by the component
+          originalUrl: '',
           processedUrl,
           intermediateResults: response.intermediate_results?.[index]
         }));
         
         setResults(processedResults);
-        console.log('Batch processing results:', processedResults); // Debug log
+        setTimingData({
+          total_time: response.total_time || 0,
+          step_timings: response.step_timings || []
+        });
+        
         return processedResults;
       } else {
         throw new Error(response.message || 'Processing failed');
       }
     } catch (error) {
       console.error('Batch processing error:', error);
-      setResults([]); // Clear results on error
+      setResults([]);
+      setTimingData({ total_time: 0, step_timings: [] });
       throw error;
     } finally {
       setLoading(false);
     }
   }, [sessionId]);
   
+  const setResultsManually = useCallback((newResults: ProcessedResult[]) => {
+    setResults(newResults);
+  }, []);
+  
   const clearResults = useCallback(() => {
     setResults([]);
+    setTimingData({ total_time: 0, step_timings: [] });
   }, []);
   
   return {
     results,
     loading,
+    timingData,
     processBatch,
+    setResultsManually,
     clearResults
   };
 }
