@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as LucideReact from 'lucide-react';
 import { ProcessedResult } from '../types';
-import { MasonryUtils } from '../utils';
+import { MasonryUtils } from '../utils/index';
 
 interface ResultsGridProps {
   results: ProcessedResult[];
@@ -132,5 +132,6 @@ const ResultsGridComponent: React.FC<ResultsGridProps> = ({
     </div>
   );
 };
+
 
 export default ResultsGridComponent;
