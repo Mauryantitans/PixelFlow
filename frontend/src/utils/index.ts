@@ -1,674 +1,446 @@
-// Image related types
-export interface ImageData {
-  id: string;
-  filename: string;
-  file_path: string;
-  thumbnail_path?: string;
-  session_id: string;
-  size_bytes: number;
-  width: number;
-  height: number;
-  format: string;
-  selected?: boolean;
-  file?: File;
-  dataUrl?: string;
-  thumbnailDataUrl?: string;
-}
+import { MasonryItem, MasonryOptions, ZoomState } from '../types';
 
-// Pipeline related types
-export interface PipelineStep {
-  id: string;
-  name: string;
-  params: Record<string, number | string | boolean>;
-  lastProcessingTime?: number; // Add individual step timing
-}
-
-export interface OperationParam {
-  name: string;
-  type: 'slider' | 'select' | 'checkbox';
-  min?: number;
-  max?: number;
-  default: number | string | boolean;
-  options?: string[];
-  description?: string;
-}
-
-export interface OperationConfig {
-  description: string;
-  params: OperationParam[];
-}
-
-export interface ProcessingTiming {
-  step_name: string;
-  duration: number; // in seconds
-  step_index: number;
-}
-
-// API request/response types
-export interface ProcessRequest {
-  image_ids: string[];
-  pipeline: Array<{
-    name: string;
-    params: Record<string, number | string | boolean>;
-  }>;
-  session_id: string;
-}
-
-export interface LiveProcessRequest {
-  image_id: string;
-  pipeline: Array<{
-    name: string;
-    params: Record<string, number | string | boolean>;
-  }>;
-  session_id: string;
-}
-
-export interface ProcessResponse {
-  success: boolean;
-  processed_images: string[];
-  intermediate_results?: string[][];
-  total_time: number;
-  step_timings: ProcessingTiming[];
-  message: string;
-}
-
-export interface LiveProcessResponse {
-  success: boolean;
-  results: string[];
-  total_time: number;
-  step_timings: ProcessingTiming[];
-  message: string;
-}
-
-export interface UploadResponse {
-  success: boolean;
-  image?: ImageData;
-  thumbnail?: string;
-  message: string;
-}
-
-export interface MultipleUploadResponse {
-  success: boolean;
-  uploaded_count: number;
-  failed_count: number;
-  uploaded_images: Array<{
-    image: ImageData;
-    thumbnail: string;
-  }>;
-  failed_uploads: Array<{
-    filename: string;
-    error: string;
-  }>;
-  message: string;
-}
-
-// UI State types
-export interface UIState {
-  theme: 'light' | 'dark';
-  sidebarCollapsed: boolean;
-  liveProcessingEnabled: boolean;
-  currentView: 'grid' | 'inspector' | 'live';
-  inspectorView: 'normal' | 'side-by-side' | 'slider';
-  selectedImages: string[];
-  selectedResult: ProcessedResult | null;
-  viewingStepIndex: number; // -1 for final result
-}
-
-export interface ProcessedResult {
-  id: string;
-  originalUrl: string;
-  processedUrl: string;
-  intermediateResults?: string[];
-  totalTime?: number; // Add timing
-  stepTimings?: ProcessingTiming[]; // Add step timings
-}
-
-
-// Status types
-export type StatusType = 'info' | 'processing' | 'success' | 'error' | 'warning';
-
-export interface StatusMessage {
-  text: string;
-  type: StatusType;
-  persistent?: boolean;
-}
-
-// Modal types
-export interface ModalState {
-  galleryOpen: boolean;
-  lightboxOpen: boolean;
-  lightboxImages: string[];
-  lightboxIndex: number;
-}
-
-// Zoom/Pan types
-export interface ZoomState {
-  scale: number;
-  x: number;
-  y: number;
-  isDragging: boolean;
-}
-
-// Session types
-export interface SessionInfo {
-  id: string;
-  createdAt: Date;
-  lastActivity: Date;
-}
-
-// API Error types
-export interface APIError {
-  success: false;
-  error: string;
-  message: string;
-}
-
-// Masonry layout types
-export interface MasonryItem {
-  id: string;
-  element: HTMLElement;
-  width: number;
-  height: number;
-  x: number;
-  y: number;
-}
-
-export interface MasonryOptions {
-  columnWidth: number;
-  gap: number;
-  containerWidth: number;
-}
-
-// Event types for custom hooks
-export interface ImageUploadEvent {
-  files: FileList;
-  sessionId: string;
-}
-
-export interface PipelineChangeEvent {
-  pipeline: PipelineStep[];
-  sessionId: string;
-}
-
-export interface ParameterChangeEvent {
-  stepId: string;
-  paramName: string;
-  value: number | string | boolean;
-}
-
-// Component props types
-export interface BaseComponentProps {
-  className?: string;
-  children?: React.ReactNode;
-}
-
-export interface ButtonProps extends BaseComponentProps {
-  variant?: 'primary' | 'secondary' | 'sm';
-  active?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
-}
-
-export interface SliderProps {
-  min: number;
-  max: number;
-  value: number;
-  step?: number;
-  onChange: (value: number) => void;
-  className?: string;
-}
-
-export interface SelectProps {
-  options: string[];
-  value: string;
-  onChange: (value: string) => void;
-  className?: string;
-}
-
-// File validation types
-export interface FileValidation {
-  maxSize: number; // in bytes
-  allowedTypes: string[];
-  maxFiles: number;
-}
-
-// Cache types for live processing
-export interface ProcessingCache {
-  pipelineHash: string;
-  results: string[];
-  timestamp: number;
-}
-
-// Constants
-export const SUPPORTED_IMAGE_TYPES = ['.jpg', '.jpeg', '.png', '.bmp', '.tiff'];
-export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-export const MAX_FILES = 20;
-export const THUMBNAIL_SIZE = { width: 150, height: 150 };
-export const MASONRY_COLUMN_WIDTH = 150;
-export const MASONRY_GAP = 16;
-export const DEBOUNCE_DELAY = 500;
-export const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
-export const CACHE_EXPIRY = 10 * 60 * 1000; // 10 minutes
-
-// Default operation configurations
-export const DEFAULT_OPERATION_CONFIGS: Record<string, OperationConfig> = {
-  'Brightness': {
-    description: 'Adjust image brightness',
-    params: [
-      {
-        name: 'amount',
-        type: 'slider',
-        min: -100,
-        max: 100,
-        default: 0,
-        description: 'Brightness adjustment amount'
-      }
-    ]
-  },
-  'Contrast': {
-    description: 'Adjust image contrast',
-    params: [
-      {
-        name: 'amount',
-        type: 'slider',
-        min: -100,
-        max: 100,
-        default: 0,
-        description: 'Contrast adjustment amount'
-      }
-    ]
-  },
-  'Saturation': {
-    description: 'Adjust color saturation',
-    params: [
-      {
-        name: 'amount',
-        type: 'slider',
-        min: -100,
-        max: 100,
-        default: 0,
-        description: 'Saturation adjustment amount'
-      }
-    ]
-  },
-  'Exposure': {
-    description: 'Adjust image exposure',
-    params: [
-      {
-        name: 'amount',
-        type: 'slider',
-        min: -100,
-        max: 100,
-        default: 0,
-        description: 'Exposure adjustment amount'
-      }
-    ]
-  },
-  'Gaussian Blur': {
-    description: 'Apply Gaussian blur effect',
-    params: [
-      {
-        name: 'radius',
-        type: 'slider',
-        min: 0,
-        max: 50,
-        default: 5,
-        description: 'Blur radius'
-      }
-    ]
-  },
-  'Sharpen': {
-    description: 'Sharpen image details',
-    params: [
-      {
-        name: 'level',
-        type: 'select',
-        options: ['Low', 'Medium', 'High'],
-        default: 'Medium',
-        description: 'Sharpening intensity'
-      }
-    ]
-  },
-  'Vignette': {
-    description: 'Add vignette effect',
-    params: [
-      {
-        name: 'strength',
-        type: 'slider',
-        min: 0,
-        max: 100,
-        default: 50,
-        description: 'Vignette strength'
-      }
-    ]
-  },
-  'Grayscale': {
-    description: 'Convert to grayscale',
-    params: []
-  },
-  'Sepia': {
-    description: 'Apply sepia tone effect',
-    params: []
-  },
-  'Invert': {
-    description: 'Invert image colors',
-    params: []
-  },
-  'Solarize': {
-    description: 'Apply solarization effect',
-    params: []
-  },
-  'Posterize': {
-    description: 'Reduce number of colors',
-    params: []
-  },
-  'Grain': {
-    description: 'Add film grain effect',
-    params: []
+/**
+ * Session Management Utilities
+ */
+export class SessionUtils {
+  private static readonly SESSION_KEY = 'pixelflow_session_id';
+  
+  static getSessionId(): string {
+    let sessionId = localStorage.getItem(this.SESSION_KEY);
+    if (!sessionId) {
+      sessionId = this.generateSessionId();
+      localStorage.setItem(this.SESSION_KEY, sessionId);
+    }
+    return sessionId;
   }
-};
+  
+  static generateSessionId(): string {
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    return `session_${timestamp}_${random}`;
+  }
+  
+  static clearSession(): void {
+    localStorage.removeItem(this.SESSION_KEY);
+  }
+}
 
-// Updated OpenCV operation configurations
-export const OPENCV_OPERATION_CONFIGS: Record<string, Record<string, OperationConfig>> = {
-  'Filtering': {
-    'Bilateral Filter': {
-      description: 'Edge-preserving smoothing filter',
-      params: [
-        { name: 'd', type: 'slider', min: 5, max: 25, default: 9, description: 'Diameter of pixel neighborhood' },
-        { name: 'sigmaColor', type: 'slider', min: 10, max: 150, default: 75, description: 'Filter sigma in color space' },
-        { name: 'sigmaSpace', type: 'slider', min: 10, max: 150, default: 75, description: 'Filter sigma in coordinate space' }
-      ]
-    },
-    'Median Filter': {
-      description: 'Median filtering for noise reduction',
-      params: [
-        { name: 'ksize', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size (odd numbers only)' }
-      ]
-    },
-    'Box Filter': {
-      description: 'Simple box blur filter',
-      params: [
-        { name: 'ksize', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' }
-      ]
-    },
-    'Non-Local Means Denoising': {
-      description: 'Advanced noise reduction using non-local means',
-      params: [
-        { name: 'h', type: 'slider', min: 3, max: 20, default: 10, description: 'Filter strength' },
-        { name: 'template_window_size', type: 'slider', min: 7, max: 21, default: 7, description: 'Template patch size' },
-        { name: 'search_window_size', type: 'slider', min: 15, max: 35, default: 21, description: 'Search window size' }
-      ]
-    }
-  },
-  'Morphological Operations': {
-    'Morphological Opening': {
-      description: 'Erosion followed by dilation',
-      params: [
-        { name: 'kernel_size', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' },
-        { name: 'shape', type: 'select', options: ['Rectangle', 'Ellipse', 'Cross'], default: 'Rectangle', description: 'Kernel shape' }
-      ]
-    },
-    'Morphological Closing': {
-      description: 'Dilation followed by erosion',
-      params: [
-        { name: 'kernel_size', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' },
-        { name: 'shape', type: 'select', options: ['Rectangle', 'Ellipse', 'Cross'], default: 'Rectangle', description: 'Kernel shape' }
-      ]
-    },
-    'Dilate': {
-      description: 'Morphological dilation',
-      params: [
-        { name: 'kernel_size', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' },
-        { name: 'shape', type: 'select', options: ['Rectangle', 'Ellipse', 'Cross'], default: 'Rectangle', description: 'Kernel shape' }
-      ]
-    },
-    'Erode': {
-      description: 'Morphological erosion',
-      params: [
-        { name: 'kernel_size', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' },
-        { name: 'shape', type: 'select', options: ['Rectangle', 'Ellipse', 'Cross'], default: 'Rectangle', description: 'Kernel shape' }
-      ]
-    },
-    'Morphological Gradient': {
-      description: 'Difference between dilation and erosion',
-      params: [
-        { name: 'kernel_size', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' },
-        { name: 'shape', type: 'select', options: ['Rectangle', 'Ellipse', 'Cross'], default: 'Rectangle', description: 'Kernel shape' }
-      ]
-    },
-    'Top Hat': {
-      description: 'Difference between original and opening',
-      params: [
-        { name: 'kernel_size', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' },
-        { name: 'shape', type: 'select', options: ['Rectangle', 'Ellipse', 'Cross'], default: 'Rectangle', description: 'Kernel shape' }
-      ]
-    },
-    'Black Hat': {
-      description: 'Difference between closing and original',
-      params: [
-        { name: 'kernel_size', type: 'slider', min: 3, max: 15, default: 5, description: 'Kernel size' },
-        { name: 'shape', type: 'select', options: ['Rectangle', 'Ellipse', 'Cross'], default: 'Rectangle', description: 'Kernel shape' }
-      ]
-    }
-  },
-  'Edge Detection': {
-    'Canny Edge Detection': {
-      description: 'Canny edge detector',
-      params: [
-        { name: 'threshold1', type: 'slider', min: 50, max: 200, default: 100, description: 'First threshold' },
-        { name: 'threshold2', type: 'slider', min: 100, max: 300, default: 200, description: 'Second threshold' }
-      ]
-    },
-    'Sobel X': {
-      description: 'Sobel edge detection (X direction)',
-      params: [
-        { name: 'ksize', type: 'slider', min: 1, max: 7, default: 3, description: 'Kernel size' }
-      ]
-    },
-    'Sobel Y': {
-      description: 'Sobel edge detection (Y direction)', 
-      params: [
-        { name: 'ksize', type: 'slider', min: 1, max: 7, default: 3, description: 'Kernel size' }
-      ]
-    },
-    'Sobel Combined': {
-      description: 'Combined Sobel edge detection (magnitude)',
-      params: [
-        { name: 'ksize', type: 'slider', min: 1, max: 7, default: 3, description: 'Kernel size' }
-      ]
-    },
-    'Laplacian': {
-      description: 'Laplacian edge detection',
-      params: [
-        { name: 'ksize', type: 'slider', min: 1, max: 7, default: 3, description: 'Kernel size' }
-      ]
-    },
-    'Scharr X': {
-      description: 'Scharr edge detection (X direction)',
-      params: []
-    },
-    'Scharr Y': {
-      description: 'Scharr edge detection (Y direction)',
-      params: []
-    }
-  },
-  'Color Space Conversions': {
-    'RGB to HSV': {
-      description: 'Convert RGB to HSV color space',
-      params: []
-    },
-    'RGB to LAB': {
-      description: 'Convert RGB to LAB color space',
-      params: []
-    },
-    'RGB to YUV': {
-      description: 'Convert RGB to YUV color space',
-      params: []
-    }
-  },
-  'Geometric Transformations': {
-    'Resize': {
-      description: 'Resize image by scale factor',
-      params: [
-        { name: 'scale_factor', type: 'slider', min: 0.1, max: 3.0, default: 1.0, description: 'Scale factor' }
-      ]
-    },
-    'Rotation': {
-      description: 'Rotate image by specified angle',
-      params: [
-        { name: 'angle', type: 'slider', min: -180, max: 180, default: 0, description: 'Rotation angle in degrees' }
-      ]
-    },
-    'Flip Horizontal': {
-      description: 'Flip image horizontally',
-      params: []
-    },
-    'Flip Vertical': {
-      description: 'Flip image vertically',
-      params: []
-    }
-  },
-  'Feature Detection': {
-    'FAST Corner Detection': {
-      description: 'Features from Accelerated Segment Test corner detection',
-      params: [
-        { name: 'threshold', type: 'slider', min: 10, max: 100, default: 50, description: 'Detection threshold' }
-      ]
-    },
-    'ORB Features': {
-      description: 'Oriented FAST and Rotated BRIEF feature detection',
-      params: [
-        { name: 'n_features', type: 'slider', min: 50, max: 1000, default: 500, description: 'Maximum number of features' }
-      ]
+/**
+ * Theme Management Utilities
+ */
+export class ThemeUtils {
+  private static readonly THEME_KEY = 'pixelflow_theme';
+  
+  static getTheme(): 'light' | 'dark' {
+    const saved = localStorage.getItem(this.THEME_KEY) as 'light' | 'dark';
+    if (saved) return saved;
+    
+    // Default to system preference
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  
+  static setTheme(theme: 'light' | 'dark'): void {
+    localStorage.setItem(this.THEME_KEY, theme);
+    
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
     }
   }
-};
+  
+  static toggleTheme(): 'light' | 'dark' {
+    const current = this.getTheme();
+    const newTheme = current === 'light' ? 'dark' : 'light';
+    this.setTheme(newTheme);
+    return newTheme;
+  }
+}
 
-export const SCIKIT_OPERATION_CONFIGS: Record<string, Record<string, OperationConfig>> = {
-  'Enhancement': {
-    'Histogram Equalization': {
-      description: 'Improve image contrast using histogram equalization',
-      params: []
-    },
-    'Adaptive Histogram Equalization': {
-      description: 'Contrast Limited Adaptive Histogram Equalization (CLAHE)',
-      params: [
-        { name: 'clip_limit', type: 'slider', min: 1, max: 10, default: 3, description: 'Clipping limit' }
-      ]
-    },
-    'Gamma Correction': {
-      description: 'Apply gamma correction to adjust brightness',
-      params: [
-        { name: 'gamma', type: 'slider', min: 0.1, max: 3.0, default: 1.0, description: 'Gamma value' }
-      ]
-    },
-    'Contrast Stretching': {
-      description: 'Stretch image contrast to full range',
-      params: [
-        { name: 'in_range', type: 'select', options: ['image', 'dtype'], default: 'image', description: 'Input range' }
-      ]
-    },
-    'Adjust Log': {
-      description: 'Apply logarithmic adjustment',
-      params: [
-        { name: 'gain', type: 'slider', min: 0.1, max: 3.0, default: 1.0, description: 'Logarithmic gain' }
-      ]
-    },
-    'Adjust Sigmoid': {
-      description: 'Apply sigmoid correction',
-      params: [
-        { name: 'cutoff', type: 'slider', min: 0.1, max: 0.9, default: 0.5, description: 'Cutoff value' },
-        { name: 'gain', type: 'slider', min: 5, max: 20, default: 10, description: 'Gain value' }
-      ]
-    },
-    'Rescale Intensity': {
-      description: 'Rescale image intensity range',
-      params: [
-        { name: 'out_range', type: 'select', options: ['uint8', 'uint16', 'dtype'], default: 'uint8', description: 'Output range' }
-      ]
-    },
-    'Logarithmic Correction': {
-      description: 'Apply logarithmic correction',
-      params: [
-        { name: 'gain', type: 'slider', min: 0.1, max: 2.0, default: 1.0, description: 'Correction gain' }
-      ]
+/**
+ * Masonry Layout Utilities
+ */
+export class MasonryUtils {
+  static calculateLayout(
+    items: HTMLElement[],
+    containerWidth: number,
+    columnWidth: number = 150,
+    gap: number = 16
+  ): MasonryItem[] {
+    if (!items.length || containerWidth === 0) return [];
+    
+    const numColumns = Math.max(1, Math.floor((containerWidth + gap) / (columnWidth + gap)));
+    const totalContentWidth = numColumns * (columnWidth + gap) - gap;
+    const initialOffset = (containerWidth - totalContentWidth) / 2;
+    
+    const columnHeights = Array(numColumns).fill(0);
+    const layoutItems: MasonryItem[] = [];
+    
+    items.forEach((element, index) => {
+      // Set width first
+      element.style.width = `${columnWidth}px`;
+      
+      // Find shortest column
+      const shortestColumnIndex = columnHeights.indexOf(Math.min(...columnHeights));
+      
+      // Calculate position
+      const x = initialOffset + shortestColumnIndex * (columnWidth + gap);
+      const y = columnHeights[shortestColumnIndex];
+      
+      // Apply position
+      element.style.left = `${x}px`;
+      element.style.top = `${y}px`;
+      element.style.position = 'absolute';
+      
+      // Update column height
+      columnHeights[shortestColumnIndex] += element.offsetHeight + gap;
+      
+      layoutItems.push({
+        id: element.dataset.id || `item-${index}`,
+        element,
+        width: columnWidth,
+        height: element.offsetHeight,
+        x,
+        y
+      });
+    });
+    
+    return layoutItems;
+  }
+  
+  static applyLayout(
+    container: HTMLElement,
+    items: HTMLElement[],
+    columnWidth: number = 150,
+    gap: number = 16
+  ): void {
+    if (!container || !items.length) return;
+    
+    const containerWidth = container.offsetWidth;
+    const layoutItems = this.calculateLayout(items, containerWidth, columnWidth, gap);
+    
+    // Set container height
+    const maxHeight = Math.max(...layoutItems.map(item => item.y + item.height));
+    container.style.height = `${maxHeight}px`;
+    container.style.position = 'relative';
+  }
+}
+
+/**
+ * Zoom and Pan Utilities
+ */
+export class ZoomPanUtils {
+  static setupZoomPan(
+    container: HTMLElement,
+    image: HTMLElement,
+    controls?: HTMLElement
+  ): () => void {
+    let state: ZoomState = {
+      scale: 1,
+      x: 0,
+      y: 0,
+      isDragging: false
+    };
+    
+    let startPoint = { x: 0, y: 0 };
+    
+    const setTransform = (transition = true) => {
+      image.style.transition = transition ? 'transform 0.1s ease-out' : 'none';
+      image.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`;
+      image.style.transformOrigin = '0 0';
+      
+      container.classList.toggle('is-zoomable', state.scale > 1);
+      
+      if (controls) {
+        const levelEl = controls.querySelector('[data-zoom="level"]');
+        if (levelEl) {
+          levelEl.textContent = `${Math.round(state.scale * 100)}%`;
+        }
+      }
+    };
+    
+    const resetZoom = () => {
+      state = { scale: 1, x: 0, y: 0, isDragging: false };
+      setTransform();
+      container.classList.remove('is-zoomable', 'is-panning');
+    };
+    
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      
+      const rect = image.getBoundingClientRect();
+      const oldScale = state.scale;
+      const delta = e.deltaY > 0 ? -1 : 1;
+      
+      let newScale = oldScale * (1 + delta * 0.2);
+      newScale = Math.min(Math.max(1, newScale), 10);
+      
+      if (Math.abs(newScale - oldScale) < 0.01) return;
+      
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const scaleRatio = newScale / oldScale;
+      
+      state.x -= x * (scaleRatio - 1);
+      state.y -= y * (scaleRatio - 1);
+      state.scale = newScale;
+      
+      if (state.scale === 1) {
+        state.x = 0;
+        state.y = 0;
+      }
+      
+      setTransform();
+    };
+    
+    const handleMouseDown = (e: MouseEvent) => {
+      if (state.scale <= 1 || e.button !== 0) return;
+      
+      e.preventDefault();
+      startPoint = { x: e.clientX - state.x, y: e.clientY - state.y };
+      state.isDragging = true;
+      container.classList.add('is-panning');
+    };
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!state.isDragging) return;
+      
+      e.preventDefault();
+      state.x = e.clientX - startPoint.x;
+      state.y = e.clientY - startPoint.y;
+      setTransform(false);
+    };
+    
+    const handleMouseUp = () => {
+      state.isDragging = false;
+      container.classList.remove('is-panning');
+    };
+    
+    const handleControlClick = (e: Event) => {
+      const button = (e.target as HTMLElement).closest('button');
+      if (!button) return;
+      
+      const action = button.dataset.zoom;
+      if (action === 'reset') {
+        resetZoom();
+        return;
+      }
+      
+      const rect = image.getBoundingClientRect();
+      const oldScale = state.scale;
+      
+      let newScale: number;
+      if (action === 'in') newScale = oldScale * 1.5;
+      else if (action === 'out') newScale = oldScale / 1.5;
+      else return;
+      
+      newScale = Math.min(Math.max(1, newScale), 10);
+      if (Math.abs(newScale - oldScale) < 0.01) return;
+      
+      const x = rect.width / 2;
+      const y = rect.height / 2;
+      const scaleRatio = newScale / oldScale;
+      
+      state.x -= x * (scaleRatio - 1);
+      state.y -= y * (scaleRatio - 1);
+      state.scale = newScale;
+      
+      if (state.scale === 1) {
+        state.x = 0;
+        state.y = 0;
+      }
+      
+      setTransform();
+    };
+    
+    // Add event listeners
+    container.addEventListener('wheel', handleWheel);
+    container.addEventListener('mousedown', handleMouseDown);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    document.addEventListener('mouseleave', handleMouseUp);
+    
+    if (controls) {
+      controls.addEventListener('click', handleControlClick);
     }
-  },
-  'Filters': {
-    'Gaussian Filter': {
-      description: 'Gaussian filtering using scikit-image',
-      params: [
-        { name: 'sigma', type: 'slider', min: 0.5, max: 10.0, default: 1.0, description: 'Standard deviation' }
-      ]
-    },
-    'Frangi Filter': {
-      description: 'Frangi filter for vessel-like structures',
-      params: []
-    },
-    'Hessian Filter': {
-      description: 'Hessian filter for blob detection',
-      params: []
-    },
-    'Farid Filter': {
-      description: 'Farid edge filter',
-      params: []
+    
+    // Return cleanup function
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('mousedown', handleMouseDown);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseleave', handleMouseUp);
+      
+      if (controls) {
+        controls.removeEventListener('click', handleControlClick);
+      }
+    };
+  }
+}
+
+/**
+ * File Utilities
+ */
+export class FileUtils {
+  static formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+  
+  static getFileExtension(filename: string): string {
+    return filename.slice((filename.lastIndexOf('.') - 1 >>> 0) + 2).toLowerCase();
+  }
+  
+  static isImageFile(file: File): boolean {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/bmp', 'image/tiff'];
+    return allowedTypes.includes(file.type);
+  }
+  
+  static fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        if (e.target?.result && typeof e.target.result === 'string') {
+          resolve(e.target.result);
+        } else {
+          reject(new Error('Failed to read file'));
+        }
+      };
+      reader.onerror = () => reject(new Error('Error reading file'));
+      reader.readAsDataURL(file);
+    });
+  }
+}
+
+/**
+ * Debounce Utility
+ */
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+  
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
+/**
+ * Throttle Utility
+ */
+export function throttle<T extends (...args: any[]) => any>(
+  func: T,
+  limit: number
+): (...args: Parameters<T>) => void {
+  let inThrottle: boolean;
+  
+  return (...args: Parameters<T>) => {
+    if (!inThrottle) {
+      func(...args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
     }
-  },
-  'Restoration': {
-    'Denoise Wavelet': {
-      description: 'Wavelet denoising',
-      params: [
-        { name: 'sigma', type: 'slider', min: 0.01, max: 0.3, default: 0.1, description: 'Noise standard deviation' }
-      ]
-    },
-    'Unsharp Mask': {
-      description: 'Sharpen image using unsharp masking',
-      params: [
-        { name: 'radius', type: 'slider', min: 1, max: 10, default: 3, description: 'Blur radius' },
-        { name: 'amount', type: 'slider', min: 0.5, max: 3.0, default: 1.0, description: 'Sharpening amount' }
-      ]
-    }
-  },
-  'Segmentation': {
-    'Threshold Otsu': {
-      description: 'Otsu\'s automatic thresholding',
-      params: []
-    },
-    'Threshold Adaptive': {
-      description: 'Adaptive thresholding',
-      params: [
-        { name: 'block_size', type: 'slider', min: 3, max: 21, default: 11, description: 'Block size for threshold calculation' }
-      ]
-    },
-    'Watershed': {
-      description: 'Watershed segmentation',
-      params: []
-    },
-    'SLIC Superpixels': {
-      description: 'Simple Linear Iterative Clustering superpixels',
-      params: [
-        { name: 'n_segments', type: 'slider', min: 50, max: 1000, default: 300, description: 'Number of segments' },
-        { name: 'compactness', type: 'slider', min: 1, max: 50, default: 10, description: 'Compactness factor' }
-      ]
-    }
-  },
-  'Feature Detection': {
-    'Harris Corner Detection': {
-      description: 'Harris corner detector',
-      params: [
-        { name: 'threshold', type: 'slider', min: 0.01, max: 0.3, default: 0.1, description: 'Detection threshold' }
-      ]
+  };
+}
+
+/**
+ * Array Utilities
+ */
+export class ArrayUtils {
+  static moveItem<T>(array: T[], fromIndex: number, toIndex: number): T[] {
+    const result = [...array];
+    const [removed] = result.splice(fromIndex, 1);
+    result.splice(toIndex, 0, removed);
+    return result;
+  }
+  
+  static removeItem<T>(array: T[], index: number): T[] {
+    return array.filter((_, i) => i !== index);
+  }
+  
+  static toggleItem<T>(array: T[], item: T): T[] {
+    const index = array.indexOf(item);
+    if (index === -1) {
+      return [...array, item];
+    } else {
+      return array.filter((_, i) => i !== index);
     }
   }
-};
+}
 
-// Update the combined lookup to include all operations
-export const ALL_OPERATION_CONFIGS: Record<string, OperationConfig> = {
-  ...DEFAULT_OPERATION_CONFIGS,
-  ...Object.values(OPENCV_OPERATION_CONFIGS).reduce((acc, category) => ({ ...acc, ...category }), {}),
-  ...Object.values(SCIKIT_OPERATION_CONFIGS).reduce((acc, category) => ({ ...acc, ...category }), {})
-};
+/**
+ * DOM Utilities
+ */
+export class DOMUtils {
+  static getElementDimensions(element: HTMLElement): { width: number; height: number } {
+    const rect = element.getBoundingClientRect();
+    return {
+      width: rect.width,
+      height: rect.height
+    };
+  }
+  
+  static isElementInViewport(element: HTMLElement): boolean {
+    const rect = element.getBoundingClientRect();
+    return (
+      rect.top >= 0 &&
+      rect.left >= 0 &&
+      rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+      rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+    );
+  }
+  
+  static scrollToElement(element: HTMLElement, behavior: 'auto' | 'smooth' = 'smooth'): void {
+    element.scrollIntoView({ behavior });
+  }
+}
 
-// Make sure all classes are exported
-export { SessionUtils, ThemeUtils, MasonryUtils, ZoomPanUtils, FileUtils, ArrayUtils, DOMUtils, ColorUtils, ValidationUtils };
+/**
+ * Color Utilities
+ */
+export class ColorUtils {
+  static hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return result ? {
+      r: parseInt(result[1], 16),
+      g: parseInt(result[2], 16),
+      b: parseInt(result[3], 16)
+    } : null;
+  }
+  
+  static rgbToHex(r: number, g: number, b: number): string {
+    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  }
+}
 
+/**
+ * Validation Utilities
+ */
+export class ValidationUtils {
+  static isValidEmail(email: string): boolean {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+  }
+  
+  static isValidUrl(url: string): boolean {
+    try {
+      new URL(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  
+  static sanitizeFilename(filename: string): string {
+    return filename.replace(/[^a-z0-9.-]/gi, '_').toLowerCase();
+  }
+}
