@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as LucideReact from 'lucide-react';
 import { ImageData } from '../types';
-import { MasonryUtils } from '../utils';
+import { MasonryUtils } from '../utils/index';
 
 interface GalleryModalProps {
   isOpen: boolean;
@@ -195,5 +195,6 @@ const GalleryModal: React.FC<GalleryModalProps> = ({
     </div>
   );
 };
+
 
 export default GalleryModal;
