@@ -1,0 +1,16 @@
+# --- Frontend (React) ---
+frontend/**/*.ts linguist-language=JavaScript
+frontend/**/*.tsx linguist-language=JavaScript
+frontend/**/*.js linguist-language=JavaScript
+frontend/**/*.jsx linguist-language=JavaScript
+frontend/**/*.css linguist-language=CSS
+
+# --- Backend (FastAPI) ---
+backend/**/*.py linguist-language=Python
+
+# --- Ignore build / vendor artifacts ---
+frontend/node_modules/** linguist-vendored
+frontend/build/** linguist-vendored
+frontend/dist/** linguist-vendored
+backend/__pycache__/** linguist-vendored
+backend/venv/** linguist-vendored
