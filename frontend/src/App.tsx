@@ -212,26 +212,48 @@ const App: React.FC = () => {
     }
     
     try {
-      // Show initial processing status
-      updateStatus('Processing images...', 'processing', true);
+      const allResults: ProcessedResult[] = [];
+      const imageIds = selectedImages.map(img => img.id);
       
-      // Use the actual batch processing endpoint which has timing
-      const results = await processBatch(selectedImages.map(img => img.id), pipeline);
-      
-      // Map original URLs to results
-      const resultsWithOriginals = results.map(result => {
-        const originalImage = selectedImages.find(img => img.id === result.id);
-        return {
-          ...result,
-          originalUrl: originalImage?.dataUrl || originalImage?.thumbnailDataUrl || ''
-        };
-      });
+      // Process images one by one to show progress
+      for (let i = 0; i < selectedImages.length; i++) {
+        const currentImage = selectedImages[i];
+        
+        // Update status with current progress
+        updateStatus(`Processing image ${i + 1} of ${selectedCount}...`, 'processing', true);
+        
+        try {
+          // Process single image using live processing endpoint
+          const response = await ApiService.processLive({
+            image_id: currentImage.id,
+            pipeline: pipeline.map(step => ({ name: step.name, params: step.params })),
+            session_id: sessionId
+          });
+          
+          if (response.success && response.results.length > 0) {
+            const result: ProcessedResult = {
+              id: currentImage.id,
+              originalUrl: currentImage.dataUrl || currentImage.thumbnailDataUrl || '',
+              processedUrl: response.results[response.results.length - 1], // Final result
+              intermediateResults: response.results
+            };
+            allResults.push(result);
+          }
+        } catch (imageError) {
+          console.error(`Failed to process image ${i + 1}:`, imageError);
+          // Continue with other images even if one fails
+        }
+      }
       
       // Set results and switch to grid view
-      setResultsManually(resultsWithOriginals);
+      setResultsManually(allResults);
       setCurrentView('grid');
       
-      updateStatus(`Successfully processed ${results.length} image(s). Click a result to inspect.`, 'success');
+      if (allResults.length > 0) {
+        updateStatus(`Successfully processed ${allResults.length} of ${selectedCount} image(s). Click a result to inspect.`, 'success');
+      } else {
+        updateStatus('No images were processed successfully', 'error');
+      }
       
     } catch (error: any) {
       updateStatus(`Batch processing failed: ${error.message}`, 'error');
