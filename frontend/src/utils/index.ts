@@ -668,3 +668,7 @@ export const ALL_OPERATION_CONFIGS: Record<string, OperationConfig> = {
   ...Object.values(OPENCV_OPERATION_CONFIGS).reduce((acc, category) => ({ ...acc, ...category }), {}),
   ...Object.values(SCIKIT_OPERATION_CONFIGS).reduce((acc, category) => ({ ...acc, ...category }), {})
 };
+
+// Make sure all classes are exported
+export { SessionUtils, ThemeUtils, MasonryUtils, ZoomPanUtils, FileUtils, ArrayUtils, DOMUtils, ColorUtils, ValidationUtils };
+
