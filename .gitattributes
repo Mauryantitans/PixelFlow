@@ -1,8 +1,8 @@
 # --- Frontend (React) ---
-frontend/**/*.ts linguist-language=JavaScript
-frontend/**/*.tsx linguist-language=JavaScript
-frontend/**/*.js linguist-language=JavaScript
-frontend/**/*.jsx linguist-language=JavaScript
+frontend/**/*.ts linguist-language=TypeScript
+frontend/**/*.tsx linguist-language=TypeScript
+frontend/**/*.js linguist-language=TypeScript
+frontend/**/*.jsx linguist-language=TypeScript
 frontend/**/*.css linguist-language=CSS
 
 # --- Backend (FastAPI) ---
