@@ -1008,3 +1008,44 @@ class ImageProcessor:
         except Exception as e:
             logger.error(f"Error applying pipeline with timing: {e}")
             raise ValueError(f"Pipeline processing failed: {e}")
+    
+    @classmethod
+    def apply_pipeline_with_timing_from_image(cls, image: Image.Image, pipeline: List[Dict[str, Any]]) -> ProcessingResult:
+        """Apply a complete pipeline to a PIL Image with detailed timing information"""
+        result = ProcessingResult()
+        pipeline_start_time = time.perf_counter()
+        
+        try:
+            current_image = image.copy()
+            
+            for step_index, step in enumerate(pipeline):
+                operation_name = step.get('name')
+                params = step.get('params', {})
+                
+                # Time individual operation
+                step_start_time = time.perf_counter()
+                processed_image = cls.apply_operation(current_image, operation_name, params)
+                step_end_time = time.perf_counter()
+                
+                step_duration = step_end_time - step_start_time
+                
+                # Store results
+                current_image = processed_image
+                result.intermediate_images.append(current_image.copy())
+                result.step_times.append(step_duration)
+                result.step_details.append({
+                    'name': operation_name,
+                    'params': params,
+                    'duration': step_duration,
+                    'step_index': step_index
+                })
+            
+            pipeline_end_time = time.perf_counter()
+            result.final_image = current_image
+            result.total_time = pipeline_end_time - pipeline_start_time
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error applying pipeline from image: {e}")
+            raise ValueError(f"Pipeline processing failed: {e}")

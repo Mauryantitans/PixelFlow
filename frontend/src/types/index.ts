@@ -668,3 +668,77 @@ export const ALL_OPERATION_CONFIGS: Record<string, OperationConfig> = {
   ...Object.values(OPENCV_OPERATION_CONFIGS).reduce((acc, category) => ({ ...acc, ...category }), {}),
   ...Object.values(SCIKIT_OPERATION_CONFIGS).reduce((acc, category) => ({ ...acc, ...category }), {})
 };
+
+// Authentication types
+export interface User {
+  id: number;
+  email: string;
+  username: string;
+  full_name?: string;
+  is_active: boolean;
+  is_admin: boolean;
+  profile_picture?: string;  // OAuth profile picture URL
+  created_at: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  username: string;
+  password: string;
+  full_name?: string;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+}
+
+export interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (data: RegisterRequest) => Promise<void>;
+  logout: () => void;
+  isAuthenticated: boolean;
+  setUser: (user: User | null) => void;
+  setToken: (token: string) => void;
+}
+
+// Saved Pipeline types
+export interface SavedPipeline {
+  id: number;
+  user_id: number;
+  name: string;
+  description?: string;
+  pipeline_data: Array<{
+    name: string;
+    params: Record<string, any>;
+  }>;
+  is_public: boolean;
+  is_template: boolean;
+  category?: string;
+  tags?: string[];
+  thumbnail_data?: string;
+  usage_count: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface CreatePipelineRequest {
+  name: string;
+  description?: string;
+  pipeline_data: Array<{
+    name: string;
+    params: Record<string, any>;
+  }>;
+  is_public?: boolean;
+  category?: string;
+  tags?: string[];
+  thumbnail_data?: string;
+}

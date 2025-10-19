@@ -6,8 +6,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .core.config import settings
+from .core.database import init_db
+from .core.security_config import CORSSettings
 from .api import api_router
 from .utils.session_manager import session_manager
+from .middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -21,6 +24,14 @@ async def lifespan(app: FastAPI):
     """Handle application startup and shutdown"""
     # Startup
     logger.info("Starting PixelFlow backend...")
+    
+    # Initialize database
+    try:
+        init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
     
     # Clean up any leftover files from previous runs
     session_manager.cleanup_all_files()
@@ -55,10 +66,15 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=CORSSettings.ALLOW_CREDENTIALS,
+    allow_methods=CORSSettings.ALLOW_METHODS,
+    allow_headers=CORSSettings.ALLOW_HEADERS,
+    expose_headers=CORSSettings.EXPOSE_HEADERS,
 )
+
+# Add security middlewares
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
@@ -89,12 +105,27 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint with security status"""
+    from .middleware.rate_limit import RateLimitMiddleware
+    from .middleware.security_headers import get_headers_info
+    from .core.security_config import RateLimiting, SecurityHeaders, LoginSecurity
+    
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.VERSION,
-        "sessions": session_manager.get_session_stats()
+        "sessions": session_manager.get_session_stats(),
+        "security": {
+            "rate_limiting": {
+                "enabled": RateLimiting.ENABLED,
+                "stats": RateLimitMiddleware.get_stats()
+            },
+            "security_headers": get_headers_info(),
+            "login_security": {
+                "max_attempts": LoginSecurity.MAX_ATTEMPTS,
+                "lockout_minutes": int(LoginSecurity.LOCKOUT_DURATION.total_seconds() / 60)
+            }
+        }
     }
 
 # Legacy endpoints for compatibility with the original frontend

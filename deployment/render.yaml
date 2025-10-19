@@ -1,0 +1,52 @@
+# PixelFlow Deployment Configuration for Render
+
+services:
+  # Backend Web Service
+  - type: web
+    name: pixelflow-backend
+    runtime: python
+    env: python
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DEBUG
+        value: false
+      - key: APP_NAME
+        value: PixelFlow
+      - key: VERSION
+        value: 1.1.0
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        fromService:
+          type: web
+          name: pixelflow-backend
+          property: port
+      - key: IMAGE_STORAGE
+        value: database
+      - key: USE_SQLITE
+        value: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pixelflow-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      - key: REFRESH_TOKEN_EXPIRE_DAYS
+        value: 7
+      - key: CORS_ORIGINS
+        value: http://localhost:3000
+
+databases:
+  - name: pixelflow-db
+    databaseName: pixelflow
+    user: pixelflow_user
+    plan: free
+    region: oregon
+    postgresMajorVersion: 16

@@ -1,0 +1,343 @@
+import React, { useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { usePipelineContext } from '../contexts/PipelineContext';
+import { useTheme, useSessionHeartbeat } from '../hooks';
+import { LogOut, Save, FolderOpen, LogIn, Home, BookOpen, Github, Zap, Moon, Sun, Settings } from 'lucide-react';
+import { SavePipelineModal } from './SavePipelineModal';
+import { LoadPipelineModal } from './LoadPipelineModal';
+import { AdminPanel } from './AdminPanel';
+import { SavedPipeline } from '../types';
+
+export const Header: React.FC = () => {
+  const { user, logout, isAuthenticated } = useAuth();
+  const { pipeline, setPipeline } = usePipelineContext();
+  const { theme, toggleTheme } = useTheme();
+  const { isActive } = useSessionHeartbeat(); // Get session status
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [showMenu, setShowMenu] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const isOnApp = location.pathname === '/app';
+
+  const handleSave = () => {
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    if (pipeline.length === 0) {
+      showNotification('Add some operations to your pipeline first!', 'error');
+      return;
+    }
+
+    setShowSaveModal(true);
+  };
+
+  const handleLoad = () => {
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    setShowLoadModal(true);
+  };
+
+  const handleLoadPipeline = (loadedPipeline: SavedPipeline) => {
+    console.log('Loading pipeline:', loadedPipeline);
+    console.log('Pipeline data:', loadedPipeline.pipeline_data);
+    console.log('Pipeline data type:', typeof loadedPipeline.pipeline_data);
+    
+    if (!loadedPipeline.pipeline_data) {
+      console.error('No pipeline_data');
+      showNotification('Invalid pipeline data: missing data', 'error');
+      return;
+    }
+    
+    if (!Array.isArray(loadedPipeline.pipeline_data)) {
+      console.error('pipeline_data is not an array:', loadedPipeline.pipeline_data);
+      showNotification('Invalid pipeline data: not an array', 'error');
+      return;
+    }
+
+    const steps = loadedPipeline.pipeline_data.map((step, index) => {
+      console.log('Processing step:', step);
+      return {
+        id: `step_${Date.now()}_${index}`,
+        name: step.name,
+        params: step.params || {},
+      };
+    });
+
+    console.log('Converted steps:', steps);
+    setPipeline(steps);
+    showNotification(`Loaded "${loadedPipeline.name}"`, 'success');
+  };
+
+  const showNotification = (message: string, type: 'success' | 'error') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  return (
+    <>
+      <div className="bg-white dark:bg-zinc-900 border-b border-slate-300 dark:border-zinc-800 px-6 py-3 relative z-50">
+        <div className="flex items-center justify-between">
+          {/* Logo and Title */}
+          <div className="flex items-center space-x-6">
+            <button 
+              onClick={() => navigate('/')}
+              className="flex items-center space-x-3 hover:opacity-80 transition-opacity"
+            >
+              <img 
+                src="/PixelFlow_Icon.png" 
+                alt="PixelFlow" 
+                className="w-10 h-10 rounded-lg"
+              />
+              <div className="flex flex-col">
+                <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50 leading-tight">PixelFlow</h1>
+                <span className="text-xs text-slate-500 dark:text-slate-400 leading-tight">Image Processing Pipeline Builder</span>
+              </div>
+            </button>
+
+            {/* Navigation Links */}
+            <nav className="hidden md:flex items-center space-x-1">
+              <button
+                onClick={() => navigate('/')}
+                className={`flex items-center space-x-1.5 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                  !isOnApp
+                    ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                }`}
+              >
+                <Home size={16} />
+                <span>Home</span>
+              </button>
+
+              <button
+                onClick={() => navigate('/app')}
+                className={`flex items-center space-x-1.5 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                  isOnApp
+                    ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                }`}
+              >
+                <Zap size={16} />
+                <span>App</span>
+              </button>
+
+              <a
+                href="https://github.com/Mauryantitans/PixelFlow/blob/React_FastAPI/README.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center space-x-1.5 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+              >
+                <BookOpen size={16} />
+                <span>Docs</span>
+              </a>
+
+              <a
+                href="https://github.com/Mauryantitans/PixelFlow"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center space-x-1.5 px-3 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+              >
+                <Github size={16} />
+                <span>Source</span>
+              </a>
+            </nav>
+          </div>
+
+          {/* Center - Session Status */}
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700">
+            <div className={`w-2 h-2 rounded-full ${
+              isActive ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+            }`}></div>
+            <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              Session - {isActive ? 'Active' : 'Inactive'}
+            </span>
+          </div>
+
+          {/* Right Side Actions */}
+          <div className="flex items-center space-x-2">
+            {/* Theme Toggle - Always visible, positioned first */}
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-md hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-600 dark:text-slate-300 transition-colors"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
+            {/* Vertical Divider */}
+            {(isAuthenticated || isOnApp) && (
+              <div className="w-px h-6 bg-slate-300 dark:bg-zinc-700 mx-1"></div>
+            )}
+
+            {isOnApp && isAuthenticated && user && (
+              <>
+                {/* Pipeline Actions */}
+                <button
+                  onClick={handleLoad}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  title="Load Pipeline"
+                >
+                  <FolderOpen size={16} />
+                  <span className="hidden sm:inline">Load</span>
+                </button>
+
+                <button
+                  onClick={handleSave}
+                  className="flex items-center space-x-1.5 px-3 py-1.5 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors shadow-sm"
+                  title="Save Pipeline"
+                >
+                  <Save size={16} />
+                  <span className="hidden sm:inline">Save</span>
+                </button>
+              </>
+            )}
+
+            {isAuthenticated && user ? (
+              <>
+                {/* User Menu */}
+                <div className="relative">
+                  <button
+                    onClick={() => setShowMenu(!showMenu)}
+                    className="flex items-center space-x-2 px-3 py-1.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-md transition-colors"
+                  >
+                    {user.profile_picture ? (
+                      <img 
+                        src={user.profile_picture} 
+                        alt={user.username}
+                        className="w-7 h-7 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-xs font-semibold">
+                          {user.username.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                    )}
+                    <span className="hidden sm:inline max-w-[120px] truncate font-medium text-slate-900 dark:text-slate-50">
+                      {user.username}
+                    </span>
+                  </button>
+
+                  {showMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-40"
+                        onClick={() => setShowMenu(false)}
+                      />
+                      <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-zinc-800 rounded-lg shadow-lg dark:shadow-black/40 border border-slate-300 dark:border-zinc-700 py-1 z-50">
+                        <div className="px-4 py-3 border-b border-slate-300 dark:border-zinc-700">
+                          <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                            {user.full_name || user.username}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                            {user.email}
+                          </p>
+                          {user.is_admin && (
+                            <span className="inline-block mt-1 px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs font-medium rounded">
+                              Admin
+                            </span>
+                          )}
+                        </div>
+
+                        {user.is_admin && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setShowAdminPanel(true);
+                                setShowMenu(false);
+                              }}
+                              className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors"
+                            >
+                              <Settings size={16} />
+                              <span>Admin Tools</span>
+                            </button>
+                            <div className="border-t border-slate-300 dark:border-zinc-700 my-1"></div>
+                          </>
+                        )}
+
+                        <button
+                          onClick={async () => {
+                            await logout();
+                            setShowMenu(false);
+                            navigate('/');
+                          }}
+                          className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        >
+                          <LogOut size={16} />
+                          <span>Logout</span>
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Guest mode */}
+                {isOnApp && (
+                  <div className="flex items-center space-x-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                    <span className="text-xs text-blue-700 dark:text-blue-400 font-medium">
+                      👋 Guest Mode
+                    </span>
+                  </div>
+                )}
+                <button
+                  onClick={() => navigate('/auth')}
+                  className="flex items-center space-x-1.5 px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors shadow-sm"
+                >
+                  <LogIn size={16} />
+                  <span>Sign In</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Notification Toast */}
+        {notification && (
+          <div className={`absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-4 py-2 rounded-lg shadow-lg z-50 animate-fade-in ${
+            notification.type === 'success' 
+              ? 'bg-green-500 dark:bg-green-600' 
+              : 'bg-red-500 dark:bg-red-600'
+          } text-white text-sm font-medium`}>
+            {notification.message}
+          </div>
+        )}
+      </div>
+
+      {/* Modals */}
+      {isAuthenticated && (
+        <>
+          <SavePipelineModal
+            isOpen={showSaveModal}
+            onClose={() => setShowSaveModal(false)}
+            pipeline={pipeline}
+            onSaveSuccess={() => showNotification('Pipeline saved successfully!', 'success')}
+          />
+
+          <LoadPipelineModal
+            isOpen={showLoadModal}
+            onClose={() => setShowLoadModal(false)}
+            onLoadPipeline={handleLoadPipeline}
+          />
+          
+          {user?.is_admin && (
+            <AdminPanel
+              isOpen={showAdminPanel}
+              onClose={() => setShowAdminPanel(false)}
+            />
+          )}
+        </>
+      )}
+    </>
+  );
+};

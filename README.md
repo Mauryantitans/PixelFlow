@@ -1,10 +1,12 @@
-#  PixelFlow
+# PixelFlow
 
 ## Visual Image Processing Pipeline Builder
 
+**Version 1.1.0** | [V1.0.0 on GitHub](https://github.com/Mauryantitans/PixelFlow/tree/v1.0.0) | [Changelog](CHANGELOG.md)
+
 ---
 
-### A comprehensive web application that enables developers and researchers to build, test, and apply sophisticated image processing pipelines through an intuitive visual interface.
+A comprehensive web application that enables developers and researchers to build, test, and apply sophisticated image processing pipelines through an intuitive visual interface.
 
 PixelFlow eliminates the need for manual parameter tuning by providing **real-time visual feedback** and extensive operation libraries from **OpenCV** and **Scikit-Image**.
 
@@ -12,689 +14,481 @@ PixelFlow eliminates the need for manual parameter tuning by providing **real-ti
 
 ---
 
+## 🆕 What's New in V1.1.0
+
+**Major Features:**
+- ✅ **PostgreSQL Database** - Full data persistence with SQLAlchemy
+- ✅ **User Authentication** - JWT-based login with Google OAuth support
+- ✅ **Admin Panel** - User management, statistics, and database tools
+- ✅ **Session Management** - Heartbeat-based tracking and auto-cleanup
+- ✅ **Pipeline Saving** - Save and load your processing pipelines
+- ✅ **Enhanced Security** - Rate limiting, security headers, and PIN protection
+
+See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
+
+---
+
 ## 📋 Table of Contents
 
 - [Features](#-features)
-- [Architecture](#️-architecture)
+- [Architecture](#-architecture)
 - [Quick Start](#-quick-start)
-- [Installation](#️-installation)
+- [Project Structure](#-project-structure)
 - [Usage](#-usage)
 - [API Documentation](#-api-documentation)
 - [Operations Library](#-operations-library)
-- [Performance](#-performance)
+- [Deployment](#-deployment)
+- [Limitations](#-limitations)
 - [Contributing](#-contributing)
+- [Contact & Support](#-contact--support)
 
 ---
 
-#  Features
+## ✨ Features
 
-## Core Functionality
+### Core Functionality
 
-### **Visual Pipeline Builder**
-
-- **Parameter Controls**: Real-time slider and dropdown controls for all operations
-- **Pipeline Management**: Add, remove, reorder, and modify operations seamlessly
-
-### **Dual Processing Modes**
-- **Live Mode**: Instant processing with immediate visual feedback for single images
-- **Batch Mode**: Efficient processing of multiple images with detailed progress tracking
-- **Step Preview**: Individual pipeline step inspection and debugging capabilities
-
-### **Comprehensive Operations Library**
+- **Visual Pipeline Builder**: Real-time parameter controls with immediate visual feedback
+- **Dual Processing Modes**:
+  - **Live Mode**: Instant single-image processing with real-time preview
+  - **Batch Mode**: Efficient multi-image processing with progress tracking
 - **50+ Operations**: Industry-standard algorithms from OpenCV and Scikit-Image
-- **Hierarchical Organization**: Logical categorization by library, category, and operation type
-- **Performance Optimized**: Efficient implementations with timing analysis
+- **Hierarchical Organization**: Logical categorization by library and operation type
 
+### Advanced Features
 
+- **User Authentication**: Secure JWT-based login with Google OAuth integration
+- **Admin Panel**: User management, session tracking, quota administration, and database tools
+- **Database Storage**: PostgreSQL support with SQLAlchemy ORM for data persistence
+- **Session Management**: Heartbeat-based tracking (active = last 5 minutes)
+- **Pipeline Saving**: Save, load, and manage your processing pipelines
+- **Performance Analytics**: Millisecond-precision timing for every operation
+- **Undo/Redo System**: Complete operation history (Ctrl+Z/Ctrl+Y)
+- **Modern Interface**: Dark/light theme support with professional design
 
-## Developer Experience
+### Developer Tools
 
-### **Performance Analytics**
-- **Real-time Timing**: Millisecond-precision performance metrics for every operation
-- **Pipeline Optimization**: Total execution time tracking with step-by-step breakdowns
-- **Batch Analysis**: Average processing times across multiple images
-
-### **Advanced Workflow Features**
-- **Undo/Redo System**: Complete operation history with keyboard shortcuts (Ctrl+Z/Ctrl+Y)
-- **Method Documentation**: Comprehensive technical documentation for every operation
-- **Session Management**: Automatic file cleanup and isolated user sessions
-
-### **Professional Interface**
-- **Modern Design**: Clean, responsive interface with dark/light theme support
-- **Image Gallery**: Advanced masonry layout with lightbox viewing capabilities
-- **Comparison Tools**: Side-by-side and slider comparison views for detailed result analysis
+- **Interactive API Docs**: FastAPI automatic documentation at `/docs`
+- **Session Monitoring**: Real-time session statistics and debugging
+- **Performance Profiling**: Built-in timing and resource usage tracking
+- **Database Scripts**: Complete set of utilities for backup, restore, cleanup
+- **Extensible Architecture**: Easy addition of new operations and features
 
 ---
 
-#  Architecture
-
-
-PixelFlow follows a **modern, scalable architecture** designed for maintainability and performance:
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────┐    ┌────────────────────────┐    ┌─────────────────────┐
 │                     │    │                        │    │                     │
-│   REACT CLIENT      │    │   FASTAPI SERVER       │    │   IMAGE STORAGE     │
+│   REACT CLIENT      │    │   FASTAPI SERVER       │    │   POSTGRESQL DB     │
 │                     │    │                        │    │                     │
-│ • TypeScript        │◄──►│ • Python 3.8+          │◄──►│ • Session-based     │
-│ • Tailwind CSS      │    │ • OpenCV               │    │ • Auto-cleanup      │
-│ • Custom Hooks      │    │ • Scikit-Image         │    │ • Local files       │
-│ • State Management  │    │ • Performance Tracking │    │ • Secure isolation  │
-│                     │    │                        │    │                     │
+│ • TypeScript        │◄──►│ • Python 3.8+          │◄──►│ • User data         │
+│ • Tailwind CSS      │    │ • OpenCV               │    │ • Image storage     │
+│ • Custom Hooks      │    │ • Scikit-Image         │    │ • Session tracking  │
+│ • State Management  │    │ • SQLAlchemy           │    │ • Pipeline storage  │
+│ • JWT Auth          │    │ • Google OAuth         │    │ • Audit logs        │
+│                     │    │ • Heartbeat System     │    │                     │
 └─────────────────────┘    └────────────────────────┘    └─────────────────────┘
 ```
 
-## 🔧 Technology Stack
+### Technology Stack
 
-### **Frontend Technologies**
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **React** | 18.2+ | Component-based UI with hooks |
-| **TypeScript** | 4.9+ | Type-safe development |
-| **Tailwind CSS** | 3.3+ | Utility-first styling |
-| **Axios** | 1.5+ | HTTP client with interceptors |
-| **Lucide React** | 0.263+ | Professional icon library |
+**Frontend:**
+- React 18.2+ with TypeScript
+- Tailwind CSS for styling
+- Axios for API communication
+- React Router for navigation
+- Lucide React for icons
 
-### **Backend Technologies**
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| **FastAPI** | 0.104+ | High-performance API framework |
-| **OpenCV** | 4.8+ | Computer vision and image processing |
-| **Scikit-Image** | 0.22+ | Scientific image analysis |
-| **PIL/Pillow** | 10.1+ | Image manipulation and formats |
-| **NumPy** | 1.24+ | Numerical computing foundation |
+**Backend:**
+- FastAPI 0.104+ (high-performance API)
+- OpenCV 4.8+ (computer vision)
+- Scikit-Image 0.22+ (scientific image analysis)
+- PIL/Pillow 10.1+ (image manipulation)
+- SQLAlchemy 2.0+ (database ORM)
+- PostgreSQL (production database)
+- Alembic (database migrations)
 
----
-
-##  Design Patterns
-
-### **Session-based Architecture**
-- Isolated user sessions with automatic cleanup
-- Secure file handling with configurable timeouts
-- Memory management and resource optimization
-
-### **Modular Operation System**  
-- Extensible operation library with standardized interfaces
-- Plugin-like architecture for easy addition of new operations
-- Consistent parameter handling across all operations
-
-### **Performance Monitoring**
-- Built-in timing and profiling for optimization
-- Real-time performance feedback
-- Comprehensive error tracking and reporting
+**Authentication & Security:**
+- JWT tokens (python-jose)
+- Google OAuth 2.0 (authlib)
+- Bcrypt password hashing (passlib)
+- Rate limiting middleware
+- Security headers (CSP, HSTS, XSS protection)
 
 ---
 
-#  Quick Start
+## 🚀 Quick Start
 
+### Prerequisites
 
-## Installation Steps
+- Python 3.8 or higher
+- Node.js 16 or higher
+- PostgreSQL (for production) or SQLite (for development)
 
-### **1️⃣ Clone Repository**
-```bash
-git clone https://github.com/MauryanTitans/pixelflow.git
-cd pixelflow
-```
+### Local Development Setup
 
-### **2️⃣ Backend Setup**
-```bash
-cd backend
-
-# Create virtual environment (recommended)
-python -m venv env
-
-# Activate virtual environment
-# Windows:
-.\env\Scripts\activate
-# macOS/Linux:
-source env/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Start backend server
-python run.py
-```
-
-### **3️⃣ Frontend Setup**
-```bash
-# In a new terminal window
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm start
-```
-
-### **4️⃣ Access Application**
-
-| Service | URL | Description |
-|---------|-----|-------------|
-| **Frontend** | http://localhost:3000 | Main application interface |
-| **API Docs** | http://localhost:8000/docs | Interactive API documentation |
-| **Health Check** | http://localhost:8000/health | Backend status monitoring |
-
----
-
-## Installation
-
-### Backend Installation
-
-1. **Create Virtual Environment** (recommended)
+1. **Clone Repository**
    ```bash
-   python -m venv env
-   # Windows
-   .\env\Scripts\activate
-   # macOS/Linux
-   source env/bin/activate
+   git clone https://github.com/MauryanTitans/pixelflow.git
+   cd pixelflow
    ```
 
-2. **Install Dependencies**
+2. **Backend Setup**
    ```bash
    cd backend
+   
+   # Create virtual environment
+   python -m venv env
+   
+   # Activate virtual environment
+   # Windows:
+   .\env\Scripts\activate
+   # macOS/Linux:
+   source env/bin/activate
+   
+   # Install dependencies
    pip install -r requirements.txt
+   
+   # Initialize database
+   python database/init_db.py
+   
+   # Start backend server
+   python run.py
    ```
 
-3. **Verify Installation**
+3. **Frontend Setup**
    ```bash
-   python -c "import cv2, skimage, PIL; print('All dependencies installed successfully')"
-   ```
-
-### Frontend Installation
-
-1. **Install Node Dependencies**
-   ```bash
+   # In a new terminal
    cd frontend
+   
+   # Install dependencies
    npm install
+   
+   # Start development server
+   npm start
    ```
 
-2. **Configure Environment** (optional)
+4. **Access Application**
+   - Frontend: http://localhost:3000
+   - API Docs: http://localhost:8000/docs
+   - Health Check: http://localhost:8000/health
+
+5. **Create Admin Account**
+   - Register a new account via frontend
+   - Use database script to promote to admin:
    ```bash
-   # Create .env file for custom API URL
-   echo "REACT_APP_API_URL=http://localhost:8000/api" > .env
+   cd backend
+   python database/list_users.py  # Find your user ID
+   # Manually update is_admin in database or use admin panel
    ```
 
-### Development Tools
-
-- **API Testing**: Use the interactive documentation at `/docs`
-- **Session Monitoring**: Check `/api/images/session-stats` for debug information
-- **Performance Analysis**: Built-in timing data in all API responses
----
-#  Usage
-
-
-
-##  Basic Workflow
-
-### **Step 1: Upload Images**
-- Click **"Upload Image(s)"** button or drag files directly to the interface
-- **Supported Formats**: JPEG, PNG, BMP, TIFF (up to 50MB per file)
-- **Batch Upload**: Select multiple images simultaneously for batch processing
-
-### **Step 2: Build Your Pipeline**
-- **Browse Operations**: Navigate the organized operation library in the left sidebar
-- **Add Operations**: Click any operation to add it to your pipeline
-- **Adjust Parameters**: Use real-time sliders and dropdowns to fine-tune settings
-- **Reorder Steps**: Drag operations up/down to change processing order
-
-### **Step 3: Choose Processing Mode**
-
-| Mode | Best For | Features |
-|------|----------|----------|
-| **🔴 Live Mode** | Single image experimentation | Real-time preview, instant feedback |
-| **⚡ Batch Mode** | Multiple image processing | Progress tracking, efficient processing |
-
-### **Step 4: Apply and Review**
-- **Process Images**: Click "Apply Pipeline" for batch or enable Live Mode for real-time
-- **Inspect Results**: Use multiple viewing modes (normal, side-by-side, slider comparison)
-- **Download Results**: Save individual images or entire processed batches
+For detailed setup instructions, see [INSTALLATION.md](INSTALLATION.md)
 
 ---
 
-##  Advanced Features
+## 📂 Project Structure
 
-###  Keyboard Shortcuts
-```
-Ctrl+Z    → Undo last pipeline change
-Ctrl+Y    → Redo pipeline change  
-Ctrl+K    → Focus operation search
-Escape    → Close active modals
-```
-
-### Performance Monitoring
-- **Pipeline Header**: Total execution time display
-- **Step-by-Step**: Individual operation timing analysis
-- **Optimization Guidance**: Identify bottlenecks and optimize workflows
-
-###  Method Documentation
-- **Info Icons**: Click ℹ️ next to operation names for detailed documentation
-- **Parameter Guides**: View ranges, technical details, and usage recommendations
-- **Algorithm Explanations**: Access comprehensive technical information
-
----
-
-#  API Documentation
-
-
-
-##  Core Endpoints
-
-### **Image Management**
-
-#### Upload Single Image
-```http
-POST /api/images/upload
-Content-Type: multipart/form-data
-
-Parameters:
-├── file: Image file (JPEG, PNG, BMP, TIFF) - Max 50MB
-└── session_id: Unique session identifier
-```
-
-#### Batch Image Upload
-```http
-POST /api/images/upload-multiple
-Content-Type: multipart/form-data
-
-Parameters:
-├── files: Multiple image files (Max 20 files)
-└── session_id: Session identifier
-```
-
----
-
-### **Processing Operations**
-
-#### Batch Processing
-```http
-POST /api/processing/process
-Content-Type: application/json
-
-{
-  "image_ids": ["uuid1", "uuid2", "uuid3"],
-  "pipeline": [
-    {
-      "name": "Brightness",
-      "params": {"amount": 25}
-    },
-    {
-      "name": "Gaussian Blur", 
-      "params": {"radius": 3}
-    }
-  ],
-  "session_id": "session_12345"
-}
-```
-
-#### Live Processing
-```http
-POST /api/processing/process-live
-Content-Type: application/json
-
-{
-  "image_id": "single_uuid",
-  "pipeline": [
-    {
-      "name": "Contrast",
-      "params": {"amount": 50}
-    }
-  ],
-  "session_id": "session_12345"
-}
-```
-
----
-
-##  Response Format
-
-### **Standard Response Structure**
-All API responses include comprehensive **timing data** and **detailed feedback**:
-
-```json
-{
-  "success": true,
-  "processed_images": ["base64_encoded_image_data"],
-  "total_time": 0.245,
-  "step_timings": [
-    {
-      "step_name": "Brightness",
-      "duration": 0.123,
-      "step_index": 0
-    },
-    {
-      "step_name": "Gaussian Blur",
-      "duration": 0.089,
-      "step_index": 1
-    }
-  ],
-  "message": "Successfully processed 3 image(s)"
-}
-```
-
-### **Error Response Structure**
-```json
-{
-  "success": false,
-  "error": "Processing failed",
-  "message": "Invalid image format: RGBA images automatically converted to RGB",
-  "details": "Specific error details for debugging"
-}
-```
-
----
-
-#  Operations Library
-
----
-
-PixelFlow provides **50+ professional-grade operations** organized into three comprehensive libraries:
-
-##  Basic Operations (13 operations)
-**Essential image adjustments and filters for common use cases**
-
-| Category | Operations | Use Cases |
-|----------|------------|-----------|
-| **Adjustments** | Brightness, Contrast, Saturation, Exposure | Basic image correction and enhancement |
-| **Filters** | Grayscale, Sepia, Invert, Solarize, Posterize | Creative effects and color manipulation |
-| **Blur & Sharpen** | Gaussian Blur, Sharpen | Detail enhancement and artistic effects |
-| **Effects** | Vignette, Grain | Artistic and cinematic enhancements |
-
----
-
-##  OpenCV Operations (25+ operations)
-**Professional computer vision and advanced image processing**
-
-### Filtering Operations
-| Operation | Parameters | Performance | Best For |
-|-----------|------------|-------------|----------|
-| **Bilateral Filter** | d, sigmaColor, sigmaSpace | Moderate | Edge-preserving noise reduction |
-| **Median Filter** | kernel size | Fast | Salt-and-pepper noise removal |
-| **Box Filter** | kernel size | Very Fast | Simple uniform blur |
-| **Non-Local Means** | h, template size, search size | Slow | Advanced noise reduction |
-
-### Morphological Operations
-- **Basic**: Opening, Closing, Dilation, Erosion
-- **Advanced**: Gradient, Top Hat, Black Hat
-- **Applications**: Object separation, noise removal, shape analysis
-
-### Edge Detection
-| Algorithm | Kernel | Output | Specialty |
-|-----------|---------|---------|-----------|
-| **Canny** | Multi-stage | Binary edges | Industry standard |
-| **Sobel X/Y/Combined** | 3x3, 5x5, 7x7 | Gradient magnitude | Fast, directional |
-| **Scharr X/Y** | 3x3 optimized | High accuracy | Precise derivatives |
-| **Laplacian** | Variable | Zero-crossings | Fine detail detection |
-
-###  Color Space Conversions
-- **RGB → HSV**: Hue-saturation-value for color-based processing
-- **RGB → LAB**: Perceptually uniform color space for scientific analysis  
-- **RGB → YUV**: Luminance-chrominance for broadcast applications
-
-### Geometric Transformations
-- **Resize**: Scale with interpolation algorithms
-- **Rotation**: Arbitrary angle rotation with center preservation
-- **Flip**: Horizontal and vertical mirroring operations
-
-### Feature Detection
-- **FAST Corners**: High-speed corner detection for real-time applications
-- **ORB Features**: Oriented features for object recognition and matching
-
----
-
-## Scikit-Image Operations (15+ operations)
-**Scientific image analysis and research-grade processing**
-
-###  Enhancement Operations
-| Operation | Purpose | Scientific Use |
-|-----------|---------|----------------|
-| **Histogram Equalization** | Global contrast improvement | Medical imaging enhancement |
-| **CLAHE** | Adaptive local enhancement | Microscopy and radiology |
-| **Gamma Correction** | Non-linear brightness adjustment | Display calibration |
-| **Contrast Stretching** | Dynamic range optimization | Scientific data visualization |
-
-### Advanced Filters
-- **Gaussian Filter**: Scientific-grade smoothing with precise sigma control
-- **Frangi Filter**: Vessel and tubular structure enhancement
-- **Hessian Filter**: Blob detection and structure analysis
-- **Farid Filter**: Edge detection with smooth derivatives
-
-### Restoration Techniques
-- **Wavelet Denoising**: Multi-scale noise reduction preserving fine details
-- **Unsharp Mask**: Professional sharpening used in print industry
-
-### Segmentation Methods
-- **Otsu Thresholding**: Automatic binary segmentation
-- **Adaptive Thresholding**: Local threshold adaptation
-- **Watershed**: Region-based segmentation for object separation
-- **SLIC Superpixels**: Perceptual image segmentation for analysis
-
----
-
-# Performance
-
-
-## Benchmark Results
-**Typical processing times on modern hardware (Intel i7, 16GB RAM)**
-
-| Operation Category | Single Image (2MP) | Batch (10 images) | Complexity |
-|-------------------|-------------------|-------------------|------------|
-| **Basic Adjustments** | < 50ms | < 500ms | O(n) |
-| **OpenCV Filtering** | 50-200ms | 0.5-2s | O(n×k²) |
-| **Edge Detection** | 100-300ms | 1-3s | O(n×k²) |
-| **Morphological Ops** | 80-250ms | 0.8-2.5s | O(n×k²) |
-| **Scikit-Image Advanced** | 200-500ms | 2-5s | O(n log n) |
-
----
-
-## Optimization Features
-
-### Performance Enhancements
-- **Session-based Caching**: Intermediate results cached for live mode efficiency
-- **Automatic Memory Management**: Configurable timeouts and cleanup procedures
-- **Progress Tracking**: Real-time feedback for long-running batch operations
-- **Error Recovery**: Graceful handling of processing failures without data loss
-
-### Monitoring Capabilities
-- **Real-time Timing**: Millisecond-precision performance metrics
-- **Pipeline Analysis**: Step-by-step execution time breakdown
-- **Batch Statistics**: Average processing times across multiple images
-- **Resource Usage**: Memory and CPU utilization tracking
-
-### Optimization Guidelines
-- **Parameter Tuning**: Use timing data to identify bottleneck operations
-- **Operation Ordering**: Place faster operations first for better user experience
-- **Image Size**: Consider resizing large images for faster processing
-- **Batch Size**: Optimal batch sizes of 5-15 images for best performance
-
----
-
-## Development
-
-### Project Structure
 ```
 pixelflow/
-├── backend/                 # FastAPI backend
+├── backend/                    # FastAPI backend
 │   ├── app/
-│   │   ├── api/            # API routes and endpoints
-│   │   ├── core/           # Configuration and settings
-│   │   ├── models/         # Pydantic data models
-│   │   └── utils/          # Image processing and utilities
-│   ├── requirements.txt    # Python dependencies
-│   └── run.py             # Application runner
-├── frontend/               # React frontend
-│   ├── public/            # Static assets
+│   │   ├── api/               # API routes and endpoints
+│   │   │   └── routes/        # Auth, admin, images, processing, OAuth
+│   │   ├── core/              # Configuration and security
+│   │   ├── models/            # Database models and schemas
+│   │   ├── middleware/        # Rate limiting, security headers
+│   │   └── utils/             # Processing, auth, cleanup utilities
+│   ├── database/              # Database scripts and utilities
+│   │   ├── init_db.py         # Database initialization
+│   │   ├── backup_database.py # Backup utilities
+│   │   ├── cleanup_database.py # Cleanup scripts
+│   │   └── ... (more utilities)
+│   ├── alembic/               # Database migrations framework
+│   ├── requirements.txt       # Python dependencies
+│   ├── .env.example           # Environment template
+│   └── run.py                 # Application entry point
+│
+├── frontend/                  # React frontend
+│   ├── public/                # Static assets
 │   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── hooks/         # Custom React hooks
-│   │   ├── services/      # API communication
-│   │   ├── types/         # TypeScript definitions
-│   │   └── utils/         # Utility functions
-│   ├── package.json       # Node dependencies
-│   └── tailwind.config.js # Styling configuration
-└── README.md              # This file
+│   │   ├── components/        # React components
+│   │   │   ├── AdminPanel.tsx # Admin interface
+│   │   │   ├── AuthPage.tsx   # Authentication
+│   │   │   └── ... (more components)
+│   │   ├── contexts/          # React contexts (Auth, Theme)
+│   │   ├── hooks/             # Custom React hooks
+│   │   ├── services/          # API communication
+│   │   ├── types/             # TypeScript definitions
+│   │   └── utils/             # Utility functions
+│   ├── package.json           # Node dependencies
+│   └── vercel.json            # Vercel deployment config
+│
+├── guides/                    # Development documentation
+│   ├── GETTING_STARTED.md     # Local development guide
+│   ├── DEVELOPMENT.md         # Development workflow
+│   ├── API_REFERENCE.md       # Complete API documentation
+│   ├── DATABASE_SETUP.md      # Database configuration
+│   ├── ADMIN_PANEL.md         # Admin features guide
+│   ├── ADDING_OPERATIONS.md   # Adding new operations
+│   └── GOOGLE_OAUTH_SETUP.md  # OAuth configuration
+│
+├── deployment/                # Deployment resources
+│   ├── QUICK_START.md         # Fast deployment guide
+│   ├── DEPLOYMENT_GUIDE.md    # Complete deployment docs
+│   ├── render.yaml            # Render configuration
+│   └── vercel.json            # Vercel configuration
+│
+├── README.md                  # This file
+├── CHANGELOG.md               # Version history
+├── CURRENT_LIMITATIONS.md     # Known issues and limitations
+├── INSTALLATION.md            # Detailed installation guide
+└── LICENSE                    # Project license
 ```
+
+---
+
+## 💻 Usage
+
+### Basic Workflow
+
+1. **Create Account / Login**
+   - Register with email and password
+   - Or use Google Sign-In (if configured)
+
+2. **Upload Images**
+   - Click "Upload Image(s)" or drag files (JPEG, PNG, BMP, TIFF up to 50MB)
+   - Images stored in database and persist across sessions
+
+3. **Build Pipeline**
+   - Browse 50+ operations
+   - Add to pipeline and adjust parameters
+   - Save pipeline for reuse
+
+4. **Choose Mode**:
+   - **Live Mode**: Real-time processing for single image
+   - **Batch Mode**: Process multiple images efficiently
+
+5. **Apply & Download**
+   - Process images and download results
+   - Results persist in database until manually deleted
+
+### Admin Features (Admin Users Only)
+
+- **User Management**: View, activate/deactivate, delete users
+- **System Statistics**: Monitor storage, sessions, and usage
+- **Database Viewer**: PIN-protected access to user data
+- **Cleanup Tools**: Manual cleanup, fix orphaned images
+- **Settings**: Adjust quotas, limits, and retention policies
+
+For detailed usage instructions, see [guides/GETTING_STARTED.md](guides/GETTING_STARTED.md)
+
+---
+
+## 📚 API Documentation
+
+### Core Endpoints
+
+**Authentication:**
+```http
+POST /api/auth/register          # Create account
+POST /api/auth/login             # Login
+POST /api/auth/logout            # Logout
+POST /api/auth/refresh           # Refresh token
+GET  /api/auth/me                # Get user info
+```
+
+**Google OAuth:**
+```http
+GET  /api/oauth/google/login     # Initiate Google login
+POST /api/oauth/google/callback  # Handle callback
+GET  /api/oauth/google/status    # Check OAuth config
+```
+
+**Image Management:**
+```http
+POST /api/images/upload          # Upload single image
+POST /api/images/upload-multiple # Upload multiple images
+GET  /api/images/session/{id}/images # Get session images
+```
+
+**Processing:**
+```http
+POST /api/processing/process        # Batch mode
+POST /api/processing/process-live   # Live mode
+GET  /api/processing/operations     # Available operations
+```
+
+**Admin (Admin Users Only):**
+```http
+GET  /api/admin/stats/overview      # System statistics
+GET  /api/admin/users               # List all users
+GET  /api/admin/storage/overview    # Storage stats
+GET  /api/admin/database/overview   # Database viewer
+POST /api/admin/cleanup/run         # Manual cleanup
+```
+
+For complete API documentation, see:
+- Interactive docs: http://localhost:8000/docs
+- Full reference: [guides/API_REFERENCE.md](guides/API_REFERENCE.md)
+
+---
+
+## 🎨 Operations Library
+
+PixelFlow provides **50+ professional-grade operations** organized into three libraries:
+
+### Basic Operations (13 operations)
+- **Adjustments**: Brightness, Contrast, Saturation, Exposure
+- **Filters**: Grayscale, Sepia, Invert, Solarize, Posterize
+- **Blur & Sharpen**: Gaussian Blur, Sharpen
+- **Effects**: Vignette, Grain
+
+### OpenCV Operations (25+ operations)
+- **Filtering**: Bilateral, Median, Box, Non-Local Means
+- **Morphological**: Opening, Closing, Dilation, Erosion, Gradient, Top Hat, Black Hat
+- **Edge Detection**: Canny, Sobel, Scharr, Laplacian
+- **Color Spaces**: HSV, LAB, YUV conversions
+- **Geometric**: Resize, Rotation, Flip
+- **Feature Detection**: FAST Corners, ORB Features
+
+### Scikit-Image Operations (15+ operations)
+- **Enhancement**: Histogram Equalization, CLAHE, Gamma Correction, Contrast Stretching
+- **Filters**: Gaussian, Frangi, Hessian, Farid
+- **Restoration**: Wavelet Denoising, Unsharp Mask
+- **Segmentation**: Otsu, Adaptive Thresholding, Watershed, SLIC Superpixels
+
+For operation details and parameters, see [guides/ADDING_OPERATIONS.md](guides/ADDING_OPERATIONS.md)
+
+---
+
+## 🚀 Deployment
+
+PixelFlow can be deployed to production using free hosting services:
+
+- **Frontend**: Vercel (free tier)
+- **Backend**: Render (free tier)
+- **Database**: PostgreSQL on Render (free tier)
+
+### Quick Deployment
+
+See the [deployment/](deployment/) folder for:
+- [START_HERE.md](deployment/START_HERE.md) - Deployment overview
+- [QUICK_START.md](deployment/QUICK_START.md) - Fast deployment checklist
+- [DEPLOYMENT_GUIDE.md](deployment/DEPLOYMENT_GUIDE.md) - Comprehensive guide
+- [ALTERNATIVE_HOSTING_OPTIONS.md](deployment/ALTERNATIVE_HOSTING_OPTIONS.md) - Other platforms
+- Configuration files: `render.yaml`, `vercel.json`
+
+**Total Monthly Cost: $0** using free tiers!
+
+**Estimated Deployment Time:** 45-60 minutes for first deployment
+
+---
+
+## ⚠️ Limitations
+
+PixelFlow V1.1.0 has some known limitations:
+
+**Critical:**
+- Desktop-only interface (mobile support planned for V2.0)
+- Google OAuth requires manual configuration
+- No background cleanup jobs (manual trigger via admin panel)
+- Free tier limitations (cold starts, 1GB database)
+
+**Moderate:**
+- Admin panel features partially implemented
+- No email verification or password reset
+- Limited file format support (JPEG, PNG, BMP, TIFF only)
+- No batch download as ZIP file
+
+For complete list of 47 known limitations and workarounds, see [CURRENT_LIMITATIONS.md](CURRENT_LIMITATIONS.md)
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how you can help:
+
+### Reporting Issues
+
+Use the [GitHub issue tracker](https://github.com/MauryanTitans/pixelflow/issues) to:
+- Report bugs with detailed reproduction steps
+- Request features with use cases and benefits
+- Ask questions about usage or development
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes and test thoroughly
+4. Commit: `git commit -m 'Add amazing feature'`
+5. Push: `git push origin feature/amazing-feature`
+6. Open a Pull Request
+
+### Areas Needing Help
+
+See [CURRENT_LIMITATIONS.md](CURRENT_LIMITATIONS.md) for areas where contributions would be valuable:
+- Background cleanup jobs implementation
+- Mobile responsiveness (V2.0)
+- Email verification system
+- Password reset functionality
+- Enhanced admin panel features
+- Automated testing suite
 
 ### Adding New Operations
 
-1. **Backend Implementation**
-   ```python
-   # Add to ImageProcessor class
-   @staticmethod
-   def apply_new_operation(image: Image.Image, param1: int, param2: str) -> Image.Image:
-       # Implementation here
-       return processed_image
-   
-   # Register in OPERATIONS mapping
-   'New Operation': apply_new_operation.__func__,
-   ```
-
-2. **Frontend Configuration**
-   ```typescript
-   // Add to operation configs
-   'New Operation': {
-     description: 'Description of the operation',
-     params: [
-       { name: 'param1', type: 'slider', min: 0, max: 100, default: 50 }
-     ]
-   }
-   ```
-
-### Testing
-```bash
-# Backend tests
-cd backend
-python -m pytest tests/
-
-# Frontend tests  
-cd frontend
-npm test
-
-# Integration tests
-npm run test:integration
-```
-
-# 🤝 Contributing
+See [guides/ADDING_OPERATIONS.md](guides/ADDING_OPERATIONS.md) for detailed instructions on:
+- Backend implementation
+- Frontend configuration
+- Testing and documentation
 
 ---
 
-We welcome contributions to PixelFlow! Here's how you can help make it even better:
+## 📧 Contact & Support
 
-## 🐛 Reporting Issues
+### Developer
 
-### **Bug Reports**
-- Use the [GitHub issue tracker](https://github.com/MauryanTitans/pixelflow/issues)
-- Include detailed steps to reproduce the issue
-- Provide sample images when relevant (use small test files)
-- Include browser/OS information and error messages
+| Platform | Link |
+|----------|------|
+| **GitHub** | [@MauryanTitans](https://github.com/Mauryantitans) |
+| **LinkedIn** | [mourya-arnepalli](https://www.linkedin.com/in/mourya-arnepalli) |
+| **Instagram** | [@mouryaarnepalli](https://www.instagram.com/mouryaarnepalli) |
 
-### **Feature Requests**
-- Clearly describe the proposed functionality
-- Explain the use case and benefits
-- Consider performance implications
-- Suggest implementation approaches if possible
+### Support
 
----
-
-## 🔧 Development Workflow
-
-### **Setting Up Development Environment**
-```bash
-# 1. Fork the repository on GitHub
-# 2. Clone your fork
-git clone https://github.com/yourusername/pixelflow.git
-cd pixelflow
-
-# 3. Create feature branch
-git checkout -b feature/amazing-new-feature
-
-# 4. Set up both backend and frontend
-# Follow installation instructions above
-
-# 5. Make your changes
-# 6. Test thoroughly
-# 7. Commit and push
-git commit -m 'Add amazing new feature'
-git push origin feature/amazing-new-feature
-
-# 8. Open a Pull Request
-```
-
-### **📋 Development Guidelines**
-- **Code Style**: Follow existing patterns and conventions
-- **Documentation**: Add comprehensive docs for new operations
-- **Testing**: Include tests for new functionality
-- **Performance**: Benchmark new operations and optimizations
-- **Backward Compatibility**: Ensure existing pipelines continue to work
+- **Bug Reports**: [GitHub Issues](https://github.com/MauryanTitans/pixelflow/issues)
+- **Questions**: GitHub Discussions
+- **Documentation**: [guides/](guides/) folder
+- **Deployment Help**: [deployment/](deployment/) folder
 
 ---
 
-## 🧪 Adding New Operations
+## 📄 License
 
-### **Backend Implementation**
-```python
-# 1. Add method to ImageProcessor class
-@staticmethod
-def apply_new_operation(image: Image.Image, param1: int, param2: str) -> Image.Image:
-    """Detailed description of the operation"""
-    try:
-        # Implementation here
-        img_array = np.array(image)
-        # Process image...
-        return Image.fromarray(processed_array)
-    except Exception as e:
-        logger.error(f"Error applying new operation: {e}")
-        return image
-
-# 2. Register in OPERATIONS mapping
-'New Operation': apply_new_operation.__func__,
-```
-
-### **Frontend Configuration**
-```typescript
-// Add to appropriate operation config
-'New Operation': {
-  description: 'Comprehensive description with technical details',
-  params: [
-    { 
-      name: 'param1', 
-      type: 'slider', 
-      min: 0, 
-      max: 100, 
-      default: 50,
-      description: 'Parameter explanation'
-    }
-  ]
-}
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
+## 📖 Documentation
 
-# 📧 Contact & Support
-
-
-## **Developer Information**
-
-| Platform | Handle | Purpose |
-|----------|--------|---------|
-| **GitHub** | [@MauryanTitans](https://github.com/Mauryantitans) | Code, issues, contributions |
-| **LinkedIn** | [mourya-arnepalli](https://www.linkedin.com/in/mourya-arnepalli) | Professional inquiries |
-| **Instagram** | [@mouryaarnepalli](https://www.instagram.com/mouryaarnepalli) | Updates and announcements |
-
-## **Support Channels**
-- **Issues**: Use GitHub Issues for bug reports and feature requests
-- **Discussions**: GitHub Discussions for general questions and community support
-- **Documentation**: Comprehensive guides available in `/docs` folder
+- **[INSTALLATION.md](INSTALLATION.md)** - Detailed setup instructions
+- **[CHANGELOG.md](CHANGELOG.md)** - Version history and changes
+- **[CURRENT_LIMITATIONS.md](CURRENT_LIMITATIONS.md)** - Known issues and limitations
+- **[guides/](guides/)** - Development and usage guides
+- **[deployment/](deployment/)** - Deployment documentation
 
 ---
 
 <div align="center">
 
-### **Built with ❤️ for the image processing community**
+### Built with ❤️ for the image processing community
 
 **⭐ Star this repository if PixelFlow helps your projects! ⭐**
 
-</div>
+[![GitHub stars](https://img.shields.io/github/stars/MauryanTitans/pixelflow?style=social)](https://github.com/MauryanTitans/pixelflow)
+[![GitHub forks](https://img.shields.io/github/forks/MauryanTitans/pixelflow?style=social)](https://github.com/MauryanTitans/pixelflow/fork)
 
+**Current Version: 1.1.0** | [View Previous Versions](CHANGELOG.md)
+
+</div>

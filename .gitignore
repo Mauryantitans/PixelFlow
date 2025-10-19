@@ -1,0 +1,179 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+backend/env/
+backend/venv/
+backend/.venv
+
+# Environment Variables (CRITICAL - Never commit these!)
+.env
+.env.local
+.env.production
+.env.*.local
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.production
+
+# Database Files (Don't commit actual databases!)
+*.db
+*.sqlite
+*.sqlite3
+backend/pixelflow.db
+backend/*.db
+
+# Database Backups
+backend/backups/
+*.sql
+*.dump
+
+# Logs
+*.log
+logs/
+backend/logs/
+frontend/logs/
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+.DS_Store
+Thumbs.db
+
+# Node (Frontend)
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.cache/
+frontend/.pnp/
+.pnp.js
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+coverage/
+*.cover
+*.py,cover
+.cache
+nosetests.xml
+coverage.xml
+*.coveragerc
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# File uploads and processed images
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/processed/*
+!backend/processed/.gitkeep
+backend/temp/*
+!backend/temp/.gitkeep
+
+# Temporary files
+*.tmp
+*.temp
+*.backup
+*.old
+~*
+.~*
+
+# OS specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# VSCode
+.vscode/
+*.code-workspace
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Alembic (keep alembic structure but not specific migrations)
+# Uncomment if you want to ignore migrations:
+# backend/alembic/versions/*.py
+# !backend/alembic/versions/__init__.py
+
+# Documentation (these summary files after reading)
+PROJECT_CLEANUP_COMPLETE.md
+DATABASE_ORGANIZATION_COMPLETE.md
+
+# Production config files
+render.yaml.prod
+docker-compose.prod.yml

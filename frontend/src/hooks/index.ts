@@ -13,32 +13,86 @@ import { ApiService } from '../services/api';
 import { SessionUtils, ThemeUtils, debounce } from '../utils';
 
 /**
- * Session management hook
+ * Session management hook - CLEANUP DISABLED for testing
+ * Images will only be deleted on logout or manual cleanup
  */
 export function useSession() {
   const [sessionId] = useState(() => SessionUtils.getSessionId());
   
-  const cleanup = useCallback(() => {
-    ApiService.sendCleanupBeacon(sessionId);
-  }, [sessionId]);
+  // DISABLED: Tab-close cleanup is causing issues with reload detection
+  // TODO: Re-enable once we have a reliable way to detect actual close vs refresh
   
   useEffect(() => {
-    const handleBeforeUnload = () => cleanup();
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') cleanup();
+    console.log('ℹ️ Session initialized:', sessionId);
+    console.log('ℹ️ Tab-close cleanup is DISABLED - images persist across reloads');
+    
+    // Cleanup on component unmount is disabled
+    return () => {
+      console.log('ℹ️ Session hook unmounting - no cleanup triggered');
+    };
+  }, [sessionId]);
+  
+  return { sessionId };
+}
+
+/**
+ * Session heartbeat hook - Keeps session active with periodic pings
+ */
+export function useSessionHeartbeat() {
+  const { sessionId } = useSession();
+  const [isActive, setIsActive] = useState(true);
+  
+  useEffect(() => {
+    // Send initial heartbeat immediately
+    const sendHeartbeat = async () => {
+      try {
+        const token = localStorage.getItem('pixelflow_access_token');
+        const headers: any = { 'Content-Type': 'application/json' };
+        
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        
+        const response = await fetch('http://localhost:8000/api/images/heartbeat', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ session_id: sessionId })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          if (data.created) {
+            console.log('❤️✨ Heartbeat created new session:', sessionId);
+          } else {
+            console.log('❤️ Heartbeat: session active');
+          }
+          setIsActive(true);
+        } else {
+          console.warn('⚠️ Heartbeat failed:', data.message);
+          setIsActive(false);
+        }
+      } catch (error) {
+        console.error('❌ Heartbeat error:', error);
+        setIsActive(false);
+      }
     };
     
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    // Send heartbeat immediately on mount
+    sendHeartbeat();
+    
+    // Then send heartbeat every 30 seconds
+    const heartbeatInterval = setInterval(sendHeartbeat, 30000);
+    
+    console.log('❤️ Heartbeat system started - pinging every 30 seconds');
     
     return () => {
-      cleanup();
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(heartbeatInterval);
+      console.log('❤️ Heartbeat system stopped');
     };
-  }, [cleanup]);
+  }, [sessionId]);
   
-  return { sessionId, cleanup };
+  return { sessionId, isActive };
 }
 
 /**
@@ -97,12 +151,35 @@ export function useStatus() {
 }
 
 /**
- * Image management hook
+ * Image management hook with database persistence
  */
 export function useImages() {
   const [images, setImages] = useState<ImageData[]>([]);
   const [loading, setLoading] = useState(false);
   const { sessionId } = useSession();
+  const [isInitialized, setIsInitialized] = useState(false);
+  
+  // Load images from database on mount
+  useEffect(() => {
+    const loadImagesFromDB = async () => {
+      if (!isInitialized) {
+        try {
+          console.log('Loading images from database for session:', sessionId);
+          const savedImages = await ApiService.getSessionImages(sessionId);
+          if (savedImages.length > 0) {
+            console.log('Restored images from database:', savedImages.length);
+            setImages(savedImages);
+          }
+        } catch (error) {
+          console.error('Error loading images from database:', error);
+          // Continue with empty images if load fails
+        }
+        setIsInitialized(true);
+      }
+    };
+    
+    loadImagesFromDB();
+  }, [sessionId, isInitialized]);
   
   const addImages = useCallback(async (files: File[]) => {
     setLoading(true);
@@ -112,6 +189,8 @@ export function useImages() {
       
       const newImages: ImageData[] = [];
       const fileReadPromises: Promise<void>[] = [];
+      let quotaError: any = null;
+      const errors: string[] = [];
       
       responses.forEach((response, index) => {
         if (response.status === 'fulfilled' && response.value.success && response.value.image) {
@@ -142,8 +221,37 @@ export function useImages() {
           
           fileReadPromises.push(fileReadPromise);
           newImages.push(imageData);
+        } else if (response.status === 'rejected') {
+          // Track failed uploads
+          const error = response.reason;
+          console.error(`Failed to upload ${files[index].name}:`, error);
+          errors.push(`${files[index].name}: ${error.message || 'Upload failed'}`);
+          
+          // Check if it's a quota error (507) or image limit error (400)
+          if (error.response?.status === 507) {
+            // Storage quota exceeded
+            quotaError = error.response.data.detail;
+          } else if (error.response?.status === 400 && error.response?.data?.detail?.error === 'Image limit reached') {
+            // Image count limit reached
+            const err: any = new Error(error.response.data.detail.message);
+            err.response = error.response;
+            throw err;
+          }
         }
       });
+      
+      // If there were errors, log them
+      if (errors.length > 0) {
+        console.error('Upload errors:', errors);
+        throw new Error(`Failed to upload ${errors.length} image(s). Check console for details.`);
+      }
+      
+      // If quota exceeded, throw error to show popup
+      if (quotaError) {
+        const error: any = new Error(quotaError.message || 'Storage quota exceeded');
+        error.quotaInfo = quotaError;
+        throw error;
+      }
       
       // Wait for all FileReaders to complete
       await Promise.all(fileReadPromises);
@@ -165,8 +273,20 @@ export function useImages() {
     }
   }, [sessionId]);
   
-  const removeImage = useCallback((imageId: string) => {
+  const removeImage = useCallback(async (imageId: string) => {
+    // Remove from UI immediately
     setImages(prev => prev.filter(img => img.id !== imageId));
+    
+    // Delete from database
+    try {
+      await fetch(`http://localhost:8000/api/images/image/${imageId}`, {
+        method: 'DELETE'
+      });
+      console.log('Image deleted from database:', imageId);
+    } catch (error) {
+      console.error('Failed to delete image from database:', error);
+      // Image already removed from UI, so we can continue
+    }
   }, []);
   
   const toggleImageSelection = useCallback((imageId: string) => {
@@ -407,53 +527,102 @@ export function useLiveProcessing() {
 }
 
 /**
- * Batch processing hook
+ * Batch processing hook with real-time results and cancellation
  */
 export function useBatchProcessing() {
   const [results, setResults] = useState<ProcessedResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [timingData, setTimingData] = useState<{ total_time: number; step_timings: ProcessingTiming[] }>({ total_time: 0, step_timings: [] });
   const { sessionId } = useSession();
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isCancelledRef = useRef(false);
   
-  const processBatch = useCallback(async (imageIds: string[], pipeline: PipelineStep[]) => {
+  const processBatch = useCallback(async (
+    imageIds: string[], 
+    pipeline: PipelineStep[],
+    onProgress?: (current: number, total: number, result: ProcessedResult) => void
+  ) => {
     setLoading(true);
     setResults([]);
     setTimingData({ total_time: 0, step_timings: [] });
+    isCancelledRef.current = false;
+    
+    // Create new abort controller
+    abortControllerRef.current = new AbortController();
     
     try {
-      const response = await ApiService.processImages({
-        image_ids: imageIds,
-        pipeline: pipeline.map(step => ({ name: step.name, params: step.params })),
-        session_id: sessionId
+      const allResults: ProcessedResult[] = [];
+      const allTimings: ProcessingTiming[] = [];
+      
+      // Process images one by one
+      for (let i = 0; i < imageIds.length; i++) {
+        // Check if cancelled
+        if (isCancelledRef.current) {
+          console.log('Batch processing cancelled');
+          break;
+        }
+        
+        const imageId = imageIds[i];
+        
+        try {
+          const response = await ApiService.processLive({
+            image_id: imageId,
+            pipeline: pipeline.map(step => ({ name: step.name, params: step.params })),
+            session_id: sessionId
+          });
+          
+          if (response.success && response.results.length > 0) {
+            const result: ProcessedResult = {
+              id: imageId,
+              originalUrl: '',
+              processedUrl: response.results[response.results.length - 1],
+              intermediateResults: response.results
+            };
+            
+            allResults.push(result);
+            
+            // Add to results immediately (real-time update)
+            setResults(prev => [...prev, result]);
+            
+            // Track timings
+            if (response.step_timings) {
+              allTimings.push(...response.step_timings);
+            }
+            
+            // Call progress callback
+            if (onProgress) {
+              onProgress(i + 1, imageIds.length, result);
+            }
+          }
+        } catch (imageError) {
+          console.error(`Failed to process image ${i + 1}:`, imageError);
+          // Continue with next image
+        }
+      }
+      
+      // Update final timing data
+      setTimingData({
+        total_time: allTimings.reduce((sum, t) => sum + t.duration, 0) / 1000,
+        step_timings: allTimings
       });
       
-      if (response.success && response.processed_images) {
-        const processedResults: ProcessedResult[] = response.processed_images.map((processedUrl, index) => ({
-          id: imageIds[index],
-          originalUrl: '',
-          processedUrl,
-          intermediateResults: response.intermediate_results?.[index]
-        }));
-        
-        setResults(processedResults);
-        setTimingData({
-          total_time: response.total_time || 0,
-          step_timings: response.step_timings || []
-        });
-        
-        return processedResults;
-      } else {
-        throw new Error(response.message || 'Processing failed');
-      }
+      return allResults;
     } catch (error) {
       console.error('Batch processing error:', error);
-      setResults([]);
-      setTimingData({ total_time: 0, step_timings: [] });
       throw error;
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
   }, [sessionId]);
+  
+  const cancelBatch = useCallback(() => {
+    isCancelledRef.current = true;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setLoading(false);
+  }, []);
   
   const setResultsManually = useCallback((newResults: ProcessedResult[]) => {
     setResults(newResults);
@@ -469,6 +638,7 @@ export function useBatchProcessing() {
     loading,
     timingData,
     processBatch,
+    cancelBatch,
     setResultsManually,
     clearResults
   };

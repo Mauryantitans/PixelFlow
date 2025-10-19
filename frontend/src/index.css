@@ -278,49 +278,41 @@ details > summary svg {
   }
 }
 
-/* Enhanced Operations Library Styles */
+/* Enhanced Operations Library Styles with Vibrant Gradients */
 .library-container {
-  @apply bg-gradient-to-r rounded-lg p-3 mb-3 shadow-sm border;
+  @apply rounded-lg p-3 mb-3 shadow-sm;
 }
 
 .library-opencv {
-  @apply from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-700;
+  @apply bg-gradient-to-br from-blue-500 to-cyan-500 border-2 border-blue-400;
 }
 
 .library-scikit {
-  @apply from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-green-200 dark:border-green-700;
+  @apply bg-gradient-to-br from-emerald-500 to-teal-500 border-2 border-emerald-400;
 }
 
 .library-basic {
-  @apply from-gray-50 to-gray-100 dark:from-gray-800/20 dark:to-gray-700/20 border-gray-200 dark:border-gray-600;
+  @apply bg-gradient-to-br from-purple-500 to-pink-500 border-2 border-purple-400;
 }
 
 .library-header {
-  @apply flex items-center justify-between py-2 px-1 cursor-pointer font-bold text-sm;
+  @apply flex items-center justify-between py-2 px-2 cursor-pointer font-bold text-sm text-white;
 }
 
-.library-opencv .library-header {
-  @apply text-blue-800 dark:text-blue-200;
-}
-
-.library-scikit .library-header {
-  @apply text-green-800 dark:text-green-200;
-}
-
-.library-basic .library-header {
-  @apply text-gray-800 dark:text-gray-200;
+.library-icon {
+  @apply w-4 h-4 mr-2 flex-shrink-0 text-white;
 }
 
 .category-container {
-  @apply bg-white/60 dark:bg-black/20 rounded-md p-2 mb-2 border border-gray-200/50 dark:border-gray-600/30;
+  @apply bg-white/95 dark:bg-zinc-900/95 backdrop-blur-sm rounded-lg p-3 mb-2 border-2 border-white/50 dark:border-zinc-800 shadow-sm;
 }
 
 .category-header {
-  @apply flex items-center justify-between py-1 px-1 cursor-pointer font-semibold text-xs;
+  @apply flex items-center justify-between py-1.5 px-2 cursor-pointer font-semibold text-sm text-slate-900 dark:text-slate-50;
 }
 
 .operation-btn-enhanced {
-  @apply bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 px-2 py-2 rounded-md text-xs font-medium transition-all duration-200 shadow-sm hover:shadow-md border border-gray-200 dark:border-gray-600 relative overflow-hidden;
+  @apply bg-white dark:bg-zinc-800 text-slate-900 dark:text-slate-100 hover:bg-gradient-to-br hover:from-blue-500 hover:to-indigo-500 hover:text-white dark:hover:from-blue-600 dark:hover:to-indigo-600 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-200 shadow-sm hover:shadow-md border-2 border-slate-300 dark:border-zinc-700 hover:border-transparent relative overflow-hidden;
 }
 
 .operation-btn-enhanced:hover {
@@ -328,20 +320,15 @@ details > summary svg {
 }
 
 .operation-tooltip {
-  @apply absolute bottom-full left-1/2 transform -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs rounded px-2 py-1 opacity-0 pointer-events-none transition-opacity duration-200 z-50 whitespace-nowrap mb-1;
+  @apply absolute bottom-full left-1/2 transform -translate-x-1/2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs rounded px-2 py-1 opacity-0 pointer-events-none transition-opacity duration-200 z-50 whitespace-nowrap mb-2 shadow-lg;
 }
 
 .operation-btn-enhanced:hover .operation-tooltip {
   @apply opacity-100;
 }
 
-/* Library icons */
-.library-icon {
-  @apply w-4 h-4 mr-2 flex-shrink-0;
-}
-
 .chevron-icon {
-  @apply w-4 h-4 transition-transform duration-200;
+  @apply w-4 h-4 transition-transform duration-200 text-white;
 }
 
 .details-open .chevron-icon {

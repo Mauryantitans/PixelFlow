@@ -9,6 +9,7 @@ interface GalleryModalProps {
   onClose: () => void;
   onImageSelect: (imageId: string) => void;
   onImageRemove: (imageId: string) => void;
+  onDeleteSelected: () => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onImageView: (imageIndex: number) => void;
@@ -20,6 +21,7 @@ const GalleryModal: React.FC<GalleryModalProps> = ({
   onClose,
   onImageSelect,
   onImageRemove,
+  onDeleteSelected,
   onSelectAll,
   onDeselectAll,
   onImageView
@@ -94,6 +96,15 @@ const GalleryModal: React.FC<GalleryModalProps> = ({
           <div className="flex items-center gap-2">
             <button onClick={onSelectAll} className="btn-sm">Select All</button>
             <button onClick={onDeselectAll} className="btn-sm">Deselect All</button>
+            {selectedCount > 0 && (
+              <button 
+                onClick={onDeleteSelected}
+                className="btn-sm bg-red-600 hover:bg-red-700 text-white flex items-center gap-1"
+              >
+                <LucideReact.Trash2 className="w-4 h-4" />
+                Delete Selected ({selectedCount})
+              </button>
+            )}
             <div className="text-sm text-gray-600 dark:text-gray-400 px-2">
               {selectedCount} selected
             </div>

@@ -6,8 +6,7 @@ import {
   ProcessResponse,
   LiveProcessResponse,
   UploadResponse,
-  MultipleUploadResponse,
-  APIError
+  MultipleUploadResponse
 } from '../types';
 
 // Create axios instance with base configuration
@@ -53,10 +52,18 @@ export class ApiService {
       formData.append('file', file);
       formData.append('session_id', sessionId);
 
+      // Add auth token if available
+      const token = localStorage.getItem('pixelflow_access_token');
+      const headers: any = {
+        'Content-Type': 'multipart/form-data',
+      };
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response: AxiosResponse<UploadResponse> = await api.post('/images/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers
       });
 
       return response.data;
@@ -130,6 +137,40 @@ export class ApiService {
   }
 
   /**
+   * Get all images for a session (from database)
+   */
+  static async getSessionImages(sessionId: string): Promise<ImageData[]> {
+    try {
+      const response = await api.get(`/images/session/${sessionId}/images?include_data=true`);
+      
+      if (response.data.success) {
+        return response.data.images.map((img: any) => ({
+          id: img.id,
+          filename: img.filename,
+          file_path: img.file_path,
+          session_id: img.session_id,
+          size_bytes: img.size_bytes,
+          width: img.width,
+          height: img.height,
+          format: img.format,
+          dataUrl: img.image,  // Full image as base64 data URL
+          thumbnailDataUrl: img.thumbnail,  // Thumbnail as base64 data URL
+          selected: false  // Default to not selected
+        }));
+      }
+      
+      return [];
+    } catch (error: any) {
+      console.error('Get session images error:', error);
+      // Return empty array if session doesn't exist yet
+      if (error.response?.status === 404) {
+        return [];
+      }
+      throw this.handleError(error);
+    }
+  }
+
+  /**
    * Clean up session files
    */
   static async cleanupSession(sessionId: string): Promise<void> {
@@ -194,16 +235,19 @@ export class ApiService {
    */
   static sendCleanupBeacon(sessionId: string): void {
     try {
-      const formData = new FormData();
-      formData.append('session_id', sessionId);
-      
       const url = `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/cleanup-session`;
       
       if (navigator.sendBeacon) {
-        navigator.sendBeacon(url, formData);
+        // Create JSON blob instead of FormData
+        const blob = new Blob(
+          [JSON.stringify({ session_id: sessionId })],
+          { type: 'application/json' }
+        );
+        navigator.sendBeacon(url, blob);
       }
     } catch (error) {
       console.error('Beacon cleanup error:', error);
+      // Silently fail - this is a best-effort cleanup
     }
   }
 

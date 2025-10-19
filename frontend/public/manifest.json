@@ -1,0 +1,18 @@
+{
+  "short_name": "PixelFlow",
+  "name": "PixelFlow - Image Processing Pipeline Builder",
+  "description": "Build powerful image processing pipelines with 50+ operations from OpenCV and Scikit-Image",
+  "icons": [
+    {
+      "src": "PixelFlow_Icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563eb",
+  "background_color": "#ffffff",
+  "orientation": "landscape-primary"
+}
