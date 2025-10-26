@@ -53,7 +53,7 @@ export function useSessionHeartbeat() {
           headers['Authorization'] = `Bearer ${token}`;
         }
         
-        const response = await fetch('http://localhost:8000/api/images/heartbeat', {
+        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/heartbeat`, {
           method: 'POST',
           headers,
           body: JSON.stringify({ session_id: sessionId })
@@ -279,7 +279,7 @@ export function useImages() {
     
     // Delete from database
     try {
-      await fetch(`http://localhost:8000/api/images/image/${imageId}`, {
+      await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/image/${imageId}`, {
         method: 'DELETE'
       });
       console.log('Image deleted from database:', imageId);
