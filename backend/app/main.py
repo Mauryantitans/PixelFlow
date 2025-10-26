@@ -29,6 +29,16 @@ async def lifespan(app: FastAPI):
     try:
         init_db()
         logger.info("Database initialized successfully")
+        
+        # Create first admin if needed
+        from .core.database import SessionLocal
+        from .utils.init_admin import create_first_admin_if_needed
+        db = SessionLocal()
+        try:
+            create_first_admin_if_needed(db)
+        finally:
+            db.close()
+            
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise
