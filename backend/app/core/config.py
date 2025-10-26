@@ -36,7 +36,13 @@ class Settings:
     _port_env = os.environ.get("PORT", "8000").strip()
     PORT: int = int(_port_env) if _port_env else 8000
     
-    CORS_ORIGINS: list = CORSSettings.DEV_ORIGINS + CORSSettings.PROD_ORIGINS
+    # CORS Origins - read from environment variable or use defaults
+    _env_origins = os.environ.get("ALLOWED_ORIGINS", "")
+    CORS_ORIGINS: list = (
+        [origin.strip() for origin in _env_origins.split(",") if origin.strip()]
+        if _env_origins
+        else CORSSettings.DEV_ORIGINS + CORSSettings.PROD_ORIGINS
+    )
     
     # SQLite fallback for development
     USE_SQLITE: bool = os.environ.get("USE_SQLITE", "False").lower() == "true"
