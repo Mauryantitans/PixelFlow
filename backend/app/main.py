@@ -73,6 +73,10 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+logger.info(f"Configuring CORS with {len(settings.CORS_ORIGINS)} allowed origins:")
+for origin in settings.CORS_ORIGINS:
+    logger.info(f"  ✓ {origin}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -124,6 +128,7 @@ async def health_check():
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.VERSION,
+        "cors_origins": settings.CORS_ORIGINS,  # DEBUG: Show CORS origins
         "sessions": session_manager.get_session_stats(),
         "security": {
             "rate_limiting": {
