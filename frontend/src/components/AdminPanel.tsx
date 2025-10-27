@@ -40,7 +40,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const token = localStorage.getItem('pixelflow_access_token');
-  const apiBase = 'http://localhost:8000/api/admin';
+  const apiBase = `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/admin`;
 
   // Load data on open, but DON'T auto-refresh
   useEffect(() => {
