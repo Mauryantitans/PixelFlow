@@ -1,5 +1,6 @@
 import logging
 import uvicorn
+import re
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -72,14 +73,17 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
+# Add CORS middleware with regex support for Vercel preview deployments
 logger.info(f"Configuring CORS with {len(settings.CORS_ORIGINS)} allowed origins:")
 for origin in settings.CORS_ORIGINS:
     logger.info(f"  ✓ {origin}")
 
+# Use regex pattern to allow ALL Vercel preview deployments automatically
+logger.info("  ✓ Also allowing all Vercel preview deployments via regex")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r'https://(pixel-flow|pixel-flow-[a-z0-9]+-rikithlawangam-9256s-projects)\.vercel\.app',
     allow_credentials=CORSSettings.ALLOW_CREDENTIALS,
     allow_methods=CORSSettings.ALLOW_METHODS,
     allow_headers=CORSSettings.ALLOW_HEADERS,
@@ -128,7 +132,8 @@ async def health_check():
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.VERSION,
-        "cors_origins": settings.CORS_ORIGINS,  # DEBUG: Show CORS origins
+        "cors_origins": settings.CORS_ORIGINS,  # DEBUG: Show configured origins
+        "cors_regex": r'https://(pixel-flow|pixel-flow-[a-z0-9]+-rikithlawangam-9256s-projects)\.vercel\.app',
         "sessions": session_manager.get_session_stats(),
         "security": {
             "rate_limiting": {
