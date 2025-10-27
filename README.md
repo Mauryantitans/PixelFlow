@@ -10,7 +10,59 @@ A comprehensive web application that enables developers and researchers to build
 
 PixelFlow eliminates the need for manual parameter tuning by providing **real-time visual feedback** and extensive operation libraries from **OpenCV** and **Scikit-Image**.
 
-![PixelFlow Demo](PixelFlow.png)
+---
+
+## 📸 Screenshots
+
+<table>
+  <tr>
+    <td><img src="images/PixelFlow (1).png" alt="Screenshot 1" width="100%"/></td>
+    <td><img src="images/PixelFlow (2).png" alt="Screenshot 2" width="100%"/></td>
+    <td><img src="images/PixelFlow (3).png" alt="Screenshot 3" width="100%"/></td>
+    <td><img src="images/PixelFlow (4).png" alt="Screenshot 4" width="100%"/></td>
+  </tr>
+  <tr>
+    <td><img src="images/PixelFlow (5).png" alt="Screenshot 5" width="100%"/></td>
+    <td><img src="images/PixelFlow (6).png" alt="Screenshot 6" width="100%"/></td>
+    <td><img src="images/PixelFlow (7).png" alt="Screenshot 7" width="100%"/></td>
+    <td><img src="images/PixelFlow (8).png" alt="Screenshot 8" width="100%"/></td>
+  </tr>
+  <tr>
+    <td><img src="images/PixelFlow (9).png" alt="Screenshot 9" width="100%"/></td>
+    <td><img src="images/PixelFlow (10).png" alt="Screenshot 10" width="100%"/></td>
+    <td><img src="images/PixelFlow (11).png" alt="Screenshot 11" width="100%"/></td>
+    <td><img src="images/PixelFlow (12).png" alt="Screenshot 12" width="100%"/></td>
+  </tr>
+  <tr>
+    <td><img src="images/PixelFlow (13).png" alt="Screenshot 13" width="100%"/></td>
+    <td><img src="images/PixelFlow (14).png" alt="Screenshot 14" width="100%"/></td>
+    <td><img src="images/PixelFlow (15).png" alt="Screenshot 15" width="100%"/></td>
+    <td><img src="images/PixelFlow (16).png" alt="Screenshot 16" width="100%"/></td>
+  </tr>
+</table>
+
+> 💡 **Want to see it in action?** Check out our live demo deployment below!
+
+---
+
+## 🌐 Live Demo
+
+Experience PixelFlow without any setup required!
+
+**🔗 Live Demo:** [https://pixel-flow-woad.vercel.app](https://pixel-flow-woad.vercel.app)
+
+### Demo Admin Credentials
+
+For testing admin features, use these credentials:
+
+```
+Email: admin@pixelflow.com
+Password: StrongPassword123
+```
+
+**Admin Panel PIN:** `1234`
+
+> ⚠️ **Note for Local Development:** These are demo credentials for the deployed version only. When running locally, you'll need to create your own admin account using the instructions in the [Quick Start](#-quick-start) section.
 
 ---
 
@@ -83,7 +135,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
 │                     │    │                        │    │                     │
 │   REACT CLIENT      │    │   FASTAPI SERVER       │    │   POSTGRESQL DB     │
 │                     │    │                        │    │                     │
-│ • TypeScript        │◄──►│ • Python 3.8+          │◄──►│ • User data         │
+│ • TypeScript        │◄──►│ • Python 3.11+         │◄──►│ • User data         │
 │ • Tailwind CSS      │    │ • OpenCV               │    │ • Image storage     │
 │ • Custom Hooks      │    │ • Scikit-Image         │    │ • Session tracking  │
 │ • State Management  │    │ • SQLAlchemy           │    │ • Pipeline storage  │
@@ -105,7 +157,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
 - FastAPI 0.104+ (high-performance API)
 - OpenCV 4.8+ (computer vision)
 - Scikit-Image 0.22+ (scientific image analysis)
-- PIL/Pillow 10.1+ (image manipulation)
+- PIL/Pillow 10.4+ (image manipulation)
 - SQLAlchemy 2.0+ (database ORM)
 - PostgreSQL (production database)
 - Alembic (database migrations)
@@ -123,7 +175,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
 
 ### Prerequisites
 
-- Python 3.8 or higher
+- Python 3.11 or higher
 - Node.js 16 or higher
 - PostgreSQL (for production) or SQLite (for development)
 
@@ -151,6 +203,10 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
    # Install dependencies
    pip install -r requirements.txt
    
+   # Create .env file from example
+   cp .env.example .env
+   # Edit .env and add your configuration
+   
    # Initialize database
    python database/init_db.py
    
@@ -166,6 +222,9 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
    # Install dependencies
    npm install
    
+   # Create .env file
+   # Add: REACT_APP_API_URL=http://localhost:8000/api
+   
    # Start development server
    npm start
    ```
@@ -175,13 +234,26 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
    - API Docs: http://localhost:8000/docs
    - Health Check: http://localhost:8000/health
 
-5. **Create Admin Account**
-   - Register a new account via frontend
-   - Use database script to promote to admin:
+5. **Create Admin Account (Local Development)**
+   
+   After your backend starts, you can create an admin user in two ways:
+   
+   **Option A: Environment Variables (Automatic)**
+   ```bash
+   # Add to backend/.env file:
+   ADMIN_EMAIL=your.email@example.com
+   ADMIN_PASSWORD=YourStrongPassword
+   ADMIN_USERNAME=admin
+   ADMIN_FULL_NAME=Your Name
+   
+   # Restart backend - admin will be auto-created if none exists
+   ```
+   
+   **Option B: Database Script**
    ```bash
    cd backend
-   python database/list_users.py  # Find your user ID
-   # Manually update is_admin in database or use admin panel
+   python database/list_users.py  # Find your user ID after registering
+   # Then manually update is_admin=true in database
    ```
 
 For detailed setup instructions, see [INSTALLATION.md](INSTALLATION.md)
@@ -239,6 +311,9 @@ pixelflow/
 │   ├── DEPLOYMENT_GUIDE.md    # Complete deployment docs
 │   ├── render.yaml            # Render configuration
 │   └── vercel.json            # Vercel configuration
+│
+├── images/                    # Application screenshots
+│   └── PixelFlow (1-16).png   # UI screenshots for README
 │
 ├── README.md                  # This file
 ├── CHANGELOG.md               # Version history
@@ -301,9 +376,9 @@ GET  /api/auth/me                # Get user info
 
 **Google OAuth:**
 ```http
-GET  /api/oauth/google/login     # Initiate Google login
-POST /api/oauth/google/callback  # Handle callback
-GET  /api/oauth/google/status    # Check OAuth config
+GET  /api/auth/google/login      # Initiate Google login
+POST /api/auth/google/callback   # Handle callback
+GET  /api/auth/google/status     # Check OAuth config
 ```
 
 **Image Management:**
@@ -311,6 +386,7 @@ GET  /api/oauth/google/status    # Check OAuth config
 POST /api/images/upload          # Upload single image
 POST /api/images/upload-multiple # Upload multiple images
 GET  /api/images/session/{id}/images # Get session images
+POST /api/images/heartbeat       # Keep session alive
 ```
 
 **Processing:**
@@ -370,6 +446,28 @@ PixelFlow can be deployed to production using free hosting services:
 - **Frontend**: Vercel (free tier)
 - **Backend**: Render (free tier)
 - **Database**: PostgreSQL on Render (free tier)
+
+### Environment Variables
+
+**Backend (Render):**
+```env
+DATABASE_URL=postgresql://user:password@host:port/database
+SECRET_KEY=your-secret-key-here
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+ALLOWED_ORIGINS=https://your-frontend.vercel.app
+IMAGE_STORAGE=database
+ADMIN_EMAIL=admin@example.com      # Optional: Auto-create first admin
+ADMIN_PASSWORD=YourStrongPassword   # Optional: Auto-create first admin
+ADMIN_USERNAME=admin                # Optional: Default is 'admin'
+ADMIN_FULL_NAME=Admin User          # Optional: Default is 'Admin User'
+```
+
+**Frontend (Vercel):**
+```env
+REACT_APP_API_URL=https://your-backend.onrender.com/api
+REACT_APP_GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+```
 
 ### Quick Deployment
 
