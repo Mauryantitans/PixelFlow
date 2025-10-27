@@ -44,12 +44,16 @@ class Settings:
         else CORSSettings.DEV_ORIGINS + CORSSettings.PROD_ORIGINS
     )
     
+    # CORS Regex Pattern - for dynamic domains like Vercel preview deployments
+    CORS_ORIGIN_REGEX: str = os.environ.get("ALLOWED_ORIGINS_REGEX", "")
+    
     # Log CORS origins for debugging (only first time)
     import logging
     _logger = logging.getLogger(__name__)
     _logger.info(f"CORS Configuration:")
     _logger.info(f"  Environment ALLOWED_ORIGINS: {_env_origins if _env_origins else 'Not set'}")
     _logger.info(f"  Parsed CORS_ORIGINS ({len(CORS_ORIGINS)} origins): {CORS_ORIGINS}")
+    _logger.info(f"  CORS_ORIGIN_REGEX: {CORS_ORIGIN_REGEX if CORS_ORIGIN_REGEX else 'Not set'}")
     
     # SQLite fallback for development
     USE_SQLITE: bool = os.environ.get("USE_SQLITE", "False").lower() == "true"
