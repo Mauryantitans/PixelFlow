@@ -1,24 +1,13 @@
-"""Test for the schema-returning /processing/operations endpoint (Phase 2).
+"""HTTP-level tests for the /processing endpoints.
 
-Calls the route handler directly rather than via Starlette's TestClient: the
-pinned FastAPI 0.104 / Starlette 0.27 TestClient is incompatible with the
-installed httpx 0.28. (Bumping FastAPI/Starlette for full HTTP-level API tests
-is tracked for the dependency-hardening phase.)
+Uses the FastAPI TestClient (working again after the Phase 6b FastAPI/Starlette
+bump). These exercise the real route layer — the gap that previously let a
+route-level regression slip past the unit suite.
 """
 
-import asyncio
-import json
 
-from app.api.routes.processing_db import get_available_operations
-
-
-def _call() -> dict:
-    resp = asyncio.run(get_available_operations())
-    return json.loads(resp.body)
-
-
-def test_operations_returns_full_schema():
-    body = _call()
+def test_operations_returns_full_schema(client):
+    body = client.get("/api/processing/operations").json()
     assert body["success"] is True
     assert body["version"] == "2"
     assert [c["name"] for c in body["categories"]] == ["Basic", "OpenCV", "Scikit-Image"]
@@ -35,9 +24,23 @@ def test_operations_returns_full_schema():
     assert {"min", "max", "default"} <= set(radius)
 
 
-def test_operations_keeps_legacy_list_for_compat():
-    body = _call()
+def test_operations_keeps_legacy_list_for_compat(client):
+    body = client.get("/api/processing/operations").json()
     assert "Gaussian Blur" in body["operations"]
     assert "Flood Fill" in body["operations"]
     assert body["total_count"] == 77
     assert len(body["operations"]) == 77
+
+
+def test_process_live_unknown_image_returns_404(client):
+    # Exercises the load_image_from_db route path; would have caught the 6a
+    # regression (which surfaced as a 500 instead of a clean 404).
+    resp = client.post(
+        "/api/processing/process-live",
+        json={
+            "image_id": "does-not-exist",
+            "pipeline": [{"name": "Grayscale", "params": {}}],
+            "session_id": "s1",
+        },
+    )
+    assert resp.status_code == 404
