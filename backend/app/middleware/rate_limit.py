@@ -9,7 +9,7 @@ from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Tuple
 import logging
 
@@ -98,24 +98,29 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     
     def _is_rate_limited(self, ip: str, endpoint: str, limit: int, window: timedelta) -> bool:
         """Check if the IP has exceeded the rate limit for this endpoint"""
-        
-        current_time = datetime.utcnow()
+
+        current_time = datetime.now(timezone.utc)
         cutoff_time = current_time - window
-        
+
         # Get request history for this IP and endpoint
         history = request_history[ip][endpoint]
-        
+
         # Remove old requests outside the time window
         request_history[ip][endpoint] = [
             req_time for req_time in history if req_time > cutoff_time
         ]
-        
-        # Check if limit is exceeded
-        return len(request_history[ip][endpoint]) >= limit
-    
+
+        # Prune the IP entirely if all its endpoint histories are now empty
+        # (prevents the dict from growing unboundedly over time)
+        if all(len(v) == 0 for v in request_history[ip].values()):
+            del request_history[ip]
+
+        # Check if limit is exceeded (re-read from dict in case we just pruned)
+        return len(request_history.get(ip, {}).get(endpoint, [])) >= limit
+
     def _record_request(self, ip: str, endpoint: str):
         """Record a new request"""
-        request_history[ip][endpoint].append(datetime.utcnow())
+        request_history[ip][endpoint].append(datetime.now(timezone.utc))
     
     @staticmethod
     def clear_history():

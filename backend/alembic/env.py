@@ -13,7 +13,7 @@ from app.core.config import settings
 from app.core.database import Base
 
 # Import all models to ensure they're registered with Base
-from app.models.db_models import User, SavedPipeline, ProcessingHistory, APIKey, SharedPipeline
+from app.models.db_models import User, SavedPipeline, ProcessingHistory, APIKey, SharedPipeline, RefreshToken
 
 # This is the Alembic Config object
 config = context.config

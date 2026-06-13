@@ -19,9 +19,26 @@ from ...core.database import get_db
 from ...models.db_models import UploadedImage
 from ...utils.session_manager import session_manager
 from ...utils.image_processing import ImageProcessor
+from ...processing.registry import registry
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _flatten_to_rgb(img: PILImage.Image) -> PILImage.Image:
+    """Composite any alpha channel onto white and return an RGB image.
+
+    Image-processing operations assume 3-channel RGB; stored originals may now
+    be RGBA (transparency is preserved on upload), so flatten before processing.
+    """
+    if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
+        rgba = img.convert('RGBA')
+        background = PILImage.new('RGB', rgba.size, (255, 255, 255))
+        background.paste(rgba, mask=rgba.split()[-1])
+        return background
+    if img.mode != 'RGB':
+        return img.convert('RGB')
+    return img
 
 
 def load_image_from_db_or_filesystem(image_id: str, session_id: str, db: Session) -> PILImage.Image:
@@ -34,8 +51,11 @@ def load_image_from_db_or_filesystem(image_id: str, session_id: str, db: Session
         if not uploaded_img:
             raise HTTPException(status_code=404, detail=f"Image {image_id} not found in database")
         
-        # Convert bytes to PIL Image
+        # Convert bytes to PIL Image. Stored originals may be RGBA (transparent
+        # PNGs are preserved on upload), but the processing operations expect a
+        # 3-channel RGB image, so flatten alpha onto white here.
         img = PILImage.open(io.BytesIO(uploaded_img.image_data))
+        img = _flatten_to_rgb(img)
         logger.info(f"Loaded image from database: {image_id}")
         return img
     else:
@@ -72,7 +92,14 @@ async def process_single_image_pipeline(
                     "step_index": detail["step_index"]
                 }
                 for detail in processing_result.step_details
-            ]
+            ],
+            # Per-step validation/execution errors (None when the step succeeded),
+            # index-aligned with the pipeline. Frontends that don't know the field
+            # simply ignore it.
+            "step_errors": [
+                err.to_dict() if err else None
+                for err in processing_result.step_errors
+            ],
         }
         
         # Include intermediate results
@@ -106,6 +133,7 @@ async def process_images(request: ProcessRequest, db: Session = Depends(get_db))
         processed_results = []
         all_intermediate_results = []
         all_step_timings = []
+        all_step_errors = []
         total_batch_time = 0.0
         
         # Process each image
@@ -131,7 +159,10 @@ async def process_images(request: ProcessRequest, db: Session = Depends(get_db))
                 # Collect step timings
                 if "step_timings" in result:
                     all_step_timings.extend(result["step_timings"])
-                
+
+                # Per-image step errors (aligned with processed_images order)
+                all_step_errors.append(result.get("step_errors"))
+
             except Exception as e:
                 logger.error(f"Failed to process image {image_id}: {e}")
                 continue
@@ -147,6 +178,7 @@ async def process_images(request: ProcessRequest, db: Session = Depends(get_db))
             intermediate_results=all_intermediate_results if all_intermediate_results else None,
             total_time=total_batch_time,
             step_timings=all_step_timings,
+            step_errors=all_step_errors if any(all_step_errors) else None,
             message=f"Successfully processed {len(processed_results)} image(s)"
         )
         
@@ -202,6 +234,7 @@ async def process_live(request: LiveProcessRequest, db: Session = Depends(get_db
             results=results,
             total_time=result.get("total_time", 0),
             step_timings=result.get("step_timings", []),
+            step_errors=result.get("step_errors"),
             message=f"Live processing completed with {len(results)} steps"
         )
         
@@ -214,16 +247,31 @@ async def process_live(request: LiveProcessRequest, db: Session = Depends(get_db
 
 @router.get("/operations")
 async def get_available_operations():
-    """Get list of available image processing operations"""
+    """Get available operations with full, typed parameter schemas.
+
+    Returns the registry's grouped schema (`categories[]` → `subcategories[]` →
+    `operations[]` with typed `params`) for schema-driven frontend rendering,
+    plus a flat legacy `operations` list of display labels for backward
+    compatibility with older clients.
+    """
     try:
-        operations_list = list(ImageProcessor.OPERATIONS.keys())
-        
+        schema = registry.to_schema()
+        legacy_labels = [
+            op["label"]
+            for cat in schema["categories"]
+            for sub in cat["subcategories"]
+            for op in sub["operations"]
+        ]
+
         return JSONResponse(content={
             "success": True,
-            "operations": operations_list,
-            "total_count": len(operations_list)
+            "version": schema["version"],
+            "categories": schema["categories"],
+            # Legacy fields (kept for one release for backward compatibility):
+            "operations": legacy_labels,
+            "total_count": len(legacy_labels),
         })
-        
+
     except Exception as e:
         logger.error(f"Error getting operations: {e}")
         raise HTTPException(status_code=500, detail="Failed to get available operations")

@@ -4,9 +4,35 @@
 
 This document outlines known limitations, incomplete features, and bugs in PixelFlow V1.1.0. These are documented for transparency and to guide future development priorities.
 
-**Last Updated:** October 2025  
+**Last Updated:** June 2026  
 **Version:** 1.1.0  
 **Previous Version:** [1.0.0](https://github.com/Mauryantitans/PixelFlow) on GitHub
+
+---
+
+## ✅ Recently Fixed (June 2026)
+
+- **Admin settings now actually take effect.** Previously the admin panel saved
+  retention periods, session lifetimes, and cleanup toggles to the database, but
+  enforcement read *hardcoded* constants in `app/core/business_rules.py`, so those
+  changes were silently ignored. The database `SystemSettings` row is now the single
+  source of truth: `cleanup_service.py`, session creation (`session_db.py`), and
+  logout cleanup (`auth.py`) all read it, and the admin stats/overview endpoints
+  report the same values. `business_rules.py` is now seed/defaults only.
+- **SQLite admin-panel crash fixed.** The PIN-protected *Database → Sessions* view
+  raised a naive-vs-aware `datetime` `TypeError` on SQLite (local dev); comparisons
+  are now timezone-normalised via `app/utils/datetime_utils.ensure_aware`.
+- **Storage quota of 0 no longer crashes uploads** (divide-by-zero guard in
+  `quota_manager.py`).
+- **Empty (zero-byte) uploads** are now rejected with a clear `400` instead of a
+  cryptic image-decode error.
+- **PNG transparency is preserved.** Uploaded images with an alpha channel are stored
+  as PNG/RGBA instead of being flattened onto a white background; the processing
+  pipeline flattens to RGB only at process time, so operations are unaffected.
+
+**Reserved but not yet enforced** (intentionally left for a follow-up):
+`delete_oldest_on_quota` (destructive auto-delete), `cleanup_on_tab_close` (frontend
+beacon), and server-side `max_images_per_upload`.
 
 ---
 
@@ -108,6 +134,10 @@ Admin panel has basic functionality but lacks advanced features.
 - No real-time updates (must click refresh button)
 - Database viewer requires PIN on every panel open (doesn't remember PIN in session)
 
+> ✅ **Fixed (June 2026):** saved settings (retention, session lifetime, cleanup
+> toggles) now actually drive enforcement — see *Recently Fixed* above. They were
+> previously written to the DB but ignored.
+
 ---
 
 ### 4. **No Background Cleanup Jobs**
@@ -118,16 +148,19 @@ Admin panel has basic functionality but lacks advanced features.
 While cleanup logic exists, there's no automated background job to run it.
 
 **Current Behavior:**
-- Cleanup service code exists (`CleanupService`)
-- Database retention policies are defined
-- Manual cleanup works via admin panel
-- **BUT:** No automatic scheduled cleanup
+- Cleanup service code exists (`CleanupService`) and now respects the editable
+  retention/session settings (see *Recently Fixed*)
+- A background task *is* started in `main.py` lifespan
+  (`session_manager.periodic_cleanup`), **but it only cleans filesystem-mode session
+  files** — it does **not** run the database `CleanupService`
+- Manual DB cleanup works via the admin panel ("Run Cleanup Now")
+- **BUT:** in database mode (production default) there is still no automatic
+  scheduled DB cleanup
 
 **Missing:**
-- ❌ No cron job or scheduled task
-- ❌ No automatic cleanup of expired sessions
-- ❌ No automatic cleanup of old images based on retention policy
-- ❌ Database grows indefinitely without manual cleanup
+- ❌ No scheduled task that runs `CleanupService.run_full_cleanup` for the DB
+- ❌ No automatic cleanup of expired sessions / old images in database mode
+- ❌ Database grows until an admin manually triggers cleanup
 
 **Impact:**
 - Admin must manually run cleanup via admin panel
@@ -497,6 +530,28 @@ Guest images may be linked to sessions but not to users after user logs in.
 
 ---
 
+### 18b. **Batch Upload 404s in Database Mode**
+
+**Severity:** High (newly identified, June 2026 — not yet fixed)
+
+**Description:**
+The frontend's multi-file upload (`ApiService.uploadMultipleImages`) POSTs to
+`/api/images/upload-multiple`, but that endpoint only exists in the **filesystem**
+router (`backend/app/api/routes/images.py`). The **database** router
+(`images_db.py`) — which is what runs in production (`IMAGE_STORAGE=database`) —
+has no `upload-multiple` route, so the call returns 404.
+
+**Impact:**
+- Selecting multiple files at once fails in the deployed (database-mode) app,
+  unless the frontend falls back to looping single uploads.
+
+**Fix Required:**
+- Add an `upload-multiple` endpoint to `images_db.py` mirroring the single-upload
+  logic (including the new zero-byte and transparency handling), or have the
+  frontend always upload files individually.
+
+---
+
 ## 📉 Performance Limitations
 
 ### 19. **Large Image Processing Can Be Slow**
@@ -715,8 +770,8 @@ Dark mode styles exist in Tailwind classes but no toggle.
 **Current State:**
 - ✅ All components have dark mode classes
 - ✅ Theme is technically supported
-- ❌ No UI toggle to switch themes
-- ❌ Defaults to system preference or light mode
+- ✅ A `useTheme` hook exists (`frontend/src/hooks/index.ts`) for persisting/toggling theme
+- ⚠️ Verify a visible toggle is wired into the header UI
 
 **Missing:**
 - Theme toggle button in header
@@ -914,27 +969,21 @@ No notification system for processing completion.
 
 ## 🌐 Deployment Limitations
 
-### 37. **No Docker Support**
+### 37. **Docker Support**
 
-**Status:** ❌ Not Implemented
+**Status:** ✅ Implemented (June 2026)
 
 **Description:**
-No Docker configuration for containerized deployment.
+Docker configuration now exists for containerized deployment and local dev.
 
-**Missing:**
-- ❌ No Dockerfile
-- ❌ No docker-compose.yml
-- ❌ Cannot deploy to container platforms
+**Available:**
+- ✅ `backend/Dockerfile` and `frontend/Dockerfile`
+- ✅ Root `docker-compose.yml` (PostgreSQL + backend + frontend, hot-reload)
+- ✅ `start.sh` / `start.bat` no-Docker launchers (SQLite)
 
-**Current Deployment:**
-- Render (native Python)
-- Vercel (native Node.js)
-- Works fine without Docker
-
-**Future Benefits:**
-- Easier local development
-- Consistent environments
-- Deploy anywhere (AWS, GCP, Azure)
+**Notes:**
+- Render (native Python) and Vercel (native Node.js) deployment still work as before
+- The compose stack is primarily for local development / self-hosting
 
 ---
 

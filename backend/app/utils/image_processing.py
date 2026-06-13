@@ -19,6 +19,9 @@ class ProcessingResult:
         self.step_times: List[float] = []
         self.total_time: float = 0.0
         self.step_details: List[Dict[str, Any]] = []
+        # Per-step error (None when the step succeeded). Index-aligned with the
+        # pipeline; surfaced to the API in a later phase.
+        self.step_errors: List[Any] = []
 
 class ImageProcessor:
     """Handles all image processing operations"""
@@ -937,17 +940,17 @@ class ImageProcessor:
     
     @classmethod
     def apply_operation(cls, image: Image.Image, operation_name: str, params: Dict[str, Any]) -> Image.Image:
-        """Apply a single operation to an image"""
-        if operation_name not in cls.OPERATIONS:
-            logger.warning(f"Unknown operation: {operation_name}")
-            return image
-        
-        operation_func = cls.OPERATIONS[operation_name]
-        try:
-            return operation_func(image, **params)
-        except Exception as e:
-            logger.error(f"Error applying operation {operation_name}: {e}")
-            return image
+        """Apply a single operation to an image.
+
+        Delegates to the declarative registry/executor, which validates and
+        coerces parameters and resolves legacy operation names via aliases.
+        On any error the original image is returned unchanged (the executor
+        logs a structured StepError).
+        """
+        from app.processing.executor import execute_step
+
+        result, _error = execute_step(image, {"name": operation_name, "params": params or {}})
+        return result
     
     @classmethod
     def apply_pipeline(cls, image_path: str, pipeline: List[Dict[str, Any]]) -> Tuple[Image.Image, List[Image.Image]]:
@@ -1012,27 +1015,32 @@ class ImageProcessor:
     @classmethod
     def apply_pipeline_with_timing_from_image(cls, image: Image.Image, pipeline: List[Dict[str, Any]]) -> ProcessingResult:
         """Apply a complete pipeline to a PIL Image with detailed timing information"""
+        from app.processing.executor import execute_step
+
         result = ProcessingResult()
         pipeline_start_time = time.perf_counter()
-        
+
         try:
             current_image = image.copy()
-            
+
             for step_index, step in enumerate(pipeline):
                 operation_name = step.get('name')
                 params = step.get('params', {})
-                
+
                 # Time individual operation
                 step_start_time = time.perf_counter()
-                processed_image = cls.apply_operation(current_image, operation_name, params)
+                processed_image, step_error = execute_step(
+                    current_image, {"name": operation_name, "params": params}
+                )
                 step_end_time = time.perf_counter()
-                
+
                 step_duration = step_end_time - step_start_time
-                
+
                 # Store results
                 current_image = processed_image
                 result.intermediate_images.append(current_image.copy())
                 result.step_times.append(step_duration)
+                result.step_errors.append(step_error)
                 result.step_details.append({
                     'name': operation_name,
                     'params': params,

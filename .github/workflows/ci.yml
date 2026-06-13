@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [React_FastAPI, main]
+  pull_request:
+
+jobs:
+  backend:
+    name: Backend (lint · types · tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check app/processing tests
+
+      - name: Ruff format check
+        run: ruff format --check app/processing tests
+
+      - name: mypy
+        run: mypy
+
+      - name: pytest
+        env:
+          DEBUG: "True"
+          USE_SQLITE: "True"
+          SECRET_KEY: "ci-secret-key"
+        run: pytest
+
+  frontend:
+    name: Frontend (types · tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npm test -- --watchAll=false
+        env:
+          CI: "true"

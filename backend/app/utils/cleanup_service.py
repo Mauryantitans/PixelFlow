@@ -5,12 +5,13 @@ Handles automatic deletion of expired sessions, old images, and orphaned data.
 All rules configured in app/core/business_rules.py
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import SessionLocal
-from app.core.business_rules import ImageRetention, SessionPolicy, CleanupTriggers
-from app.models.db_models import Session as DBSession, UploadedImage, ProcessedImage, User
+from app.core.business_rules import CleanupTriggers
+from app.utils.settings_manager import get_settings, get_retention_policy
+from app.models.db_models import Session as DBSession, UploadedImage, ProcessedImage, User, RefreshToken
 import logging
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,8 @@ class CleanupService:
         if not CleanupTriggers.CLEAN_EXPIRED_SESSIONS:
             return {"sessions_deleted": 0, "images_deleted": 0}
         
-        current_time = datetime.utcnow()
-        grace_period = SessionPolicy.SESSION_GRACE_PERIOD
+        current_time = datetime.now(timezone.utc)
+        grace_period = get_retention_policy(db)["session_grace"]
         cutoff_time = current_time - grace_period
         
         # Find truly expired sessions (expired + grace period passed)
@@ -64,24 +65,25 @@ class CleanupService:
         if not CleanupTriggers.CLEAN_OLD_UPLOADS:
             return {"guest_deleted": 0, "user_deleted": 0}
         
-        current_time = datetime.utcnow()
-        
+        current_time = datetime.now(timezone.utc)
+        retention = get_retention_policy(db)
+
         guest_deleted = 0
         user_deleted = 0
-        
+
         # Clean guest user uploads (no user_id)
-        guest_cutoff = current_time - ImageRetention.GUEST_UPLOAD_RETENTION
+        guest_cutoff = current_time - retention["guest_upload"]
         guest_images = db.query(UploadedImage).filter(
             UploadedImage.user_id.is_(None),
             UploadedImage.uploaded_at < guest_cutoff
         ).all()
-        
+
         for img in guest_images:
             db.delete(img)
             guest_deleted += 1
-        
+
         # Clean registered user uploads
-        user_cutoff = current_time - ImageRetention.FREE_USER_UPLOAD_RETENTION
+        user_cutoff = current_time - retention["user_upload"]
         user_images = db.query(UploadedImage).filter(
             UploadedImage.user_id.isnot(None),
             UploadedImage.uploaded_at < user_cutoff
@@ -106,10 +108,11 @@ class CleanupService:
         if not CleanupTriggers.CLEAN_OLD_PROCESSED:
             return {"deleted": 0}
         
-        current_time = datetime.utcnow()
-        
+        current_time = datetime.now(timezone.utc)
+        retention = get_retention_policy(db)
+
         # Guest processed images (check original image's user_id)
-        guest_cutoff = current_time - ImageRetention.GUEST_PROCESSED_RETENTION
+        guest_cutoff = current_time - retention["guest_processed"]
         guest_processed = db.query(ProcessedImage).join(
             UploadedImage, ProcessedImage.original_image_id == UploadedImage.id
         ).filter(
@@ -122,7 +125,7 @@ class CleanupService:
             db.delete(img)
         
         # User processed images
-        user_cutoff = current_time - ImageRetention.FREE_USER_PROCESSED_RETENTION
+        user_cutoff = current_time - retention["user_processed"]
         user_processed = db.query(ProcessedImage).join(
             UploadedImage, ProcessedImage.original_image_id == UploadedImage.id
         ).filter(
@@ -162,28 +165,42 @@ class CleanupService:
         return {"deleted": deleted}
     
     @staticmethod
+    def cleanup_expired_refresh_tokens(db: Session) -> dict:
+        """Delete refresh tokens whose JWT expiry has passed."""
+        current_time = datetime.now(timezone.utc)
+        deleted = db.query(RefreshToken).filter(
+            RefreshToken.expires_at < current_time
+        ).delete()
+        db.commit()
+        if deleted:
+            logger.info(f"Deleted {deleted} expired refresh token(s)")
+        return {"deleted": deleted}
+
+    @staticmethod
     def run_full_cleanup(db: Session) -> dict:
         """Run all cleanup tasks"""
-        if not CleanupTriggers.ENABLE_AUTO_CLEANUP:
+        if not get_settings(db).enable_auto_cleanup:
             return {"enabled": False}
         
         logger.info("Starting automated cleanup...")
         
         results = {
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "sessions": CleanupService.cleanup_expired_sessions(db),
             "old_uploads": CleanupService.cleanup_old_uploads(db),
             "old_processed": CleanupService.cleanup_old_processed_images(db),
-            "orphaned": CleanupService.cleanup_orphaned_images(db)
+            "orphaned": CleanupService.cleanup_orphaned_images(db),
+            "expired_refresh_tokens": CleanupService.cleanup_expired_refresh_tokens(db),
         }
-        
+
         total_deleted = (
             results["sessions"]["sessions_deleted"] +
             results["sessions"]["images_deleted"] +
             results["old_uploads"]["guest_deleted"] +
             results["old_uploads"]["user_deleted"] +
             results["old_processed"]["deleted"] +
-            results["orphaned"]["deleted"]
+            results["orphaned"]["deleted"] +
+            results["expired_refresh_tokens"]["deleted"]
         )
         
         logger.info(f"Cleanup complete. Total items deleted: {total_deleted}")
@@ -194,22 +211,23 @@ class CleanupService:
     @staticmethod
     def get_cleanup_stats(db: Session) -> dict:
         """Get statistics about what would be cleaned up"""
-        current_time = datetime.utcnow()
-        
+        current_time = datetime.now(timezone.utc)
+        retention = get_retention_policy(db)
+
         # Expired sessions
-        grace_cutoff = current_time - SessionPolicy.SESSION_GRACE_PERIOD
+        grace_cutoff = current_time - retention["session_grace"]
         expired_sessions = db.query(func.count(DBSession.id)).filter(
             DBSession.expires_at < grace_cutoff
         ).scalar()
-        
+
         # Old uploads
-        guest_upload_cutoff = current_time - ImageRetention.GUEST_UPLOAD_RETENTION
+        guest_upload_cutoff = current_time - retention["guest_upload"]
         old_guest_uploads = db.query(func.count(UploadedImage.id)).filter(
             UploadedImage.user_id.is_(None),
             UploadedImage.uploaded_at < guest_upload_cutoff
         ).scalar()
-        
-        user_upload_cutoff = current_time - ImageRetention.FREE_USER_UPLOAD_RETENTION
+
+        user_upload_cutoff = current_time - retention["user_upload"]
         old_user_uploads = db.query(func.count(UploadedImage.id)).filter(
             UploadedImage.user_id.isnot(None),
             UploadedImage.uploaded_at < user_upload_cutoff

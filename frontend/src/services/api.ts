@@ -6,7 +6,8 @@ import {
   ProcessResponse,
   LiveProcessResponse,
   UploadResponse,
-  MultipleUploadResponse
+  MultipleUploadResponse,
+  OperationSchema
 } from '../types';
 
 // Create axios instance with base configuration
@@ -18,28 +19,10 @@ const api = axios.create({
   },
 });
 
-// Request interceptor for logging
-api.interceptors.request.use(
-  (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
-    return config;
-  },
-  (error) => {
-    console.error('API Request Error:', error);
-    return Promise.reject(error);
-  }
-);
-
 // Response interceptor for error handling
 api.interceptors.response.use(
-  (response) => {
-    console.log(`API Response: ${response.status} ${response.config.url}`);
-    return response;
-  },
-  (error) => {
-    console.error('API Response Error:', error.response?.data || error.message);
-    return Promise.reject(error);
-  }
+  (response) => response,
+  (error) => Promise.reject(error)
 );
 
 export class ApiService {
@@ -84,15 +67,21 @@ export class ApiService {
       });
       formData.append('session_id', sessionId);
 
+      // Include auth token so authenticated users get their quota, not guest quota
+      const token = localStorage.getItem('pixelflow_access_token');
+      const headers: Record<string, string> = {
+        'Content-Type': 'multipart/form-data',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response: AxiosResponse<MultipleUploadResponse> = await api.post('/images/upload-multiple', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers,
       });
 
       return response.data;
     } catch (error: any) {
-      console.error('Multiple upload error:', error);
       throw this.handleError(error);
     }
   }
@@ -124,7 +113,7 @@ export class ApiService {
   }
 
   /**
-   * Get available operations
+   * Get available operations (legacy flat list of labels).
    */
   static async getOperations(): Promise<Record<string, any>> {
     try {
@@ -134,6 +123,15 @@ export class ApiService {
       console.error('Get operations error:', error);
       throw this.handleError(error);
     }
+  }
+
+  /**
+   * Get the full operation schema (categories → subcategories → typed params).
+   * This is the source of truth for schema-driven UI rendering.
+   */
+  static async getOperationsSchema(): Promise<OperationSchema> {
+    const response = await api.get('/processing/operations');
+    return response.data as OperationSchema;
   }
 
   /**

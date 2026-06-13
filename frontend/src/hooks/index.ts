@@ -6,11 +6,11 @@ import {
   ProcessedResult, 
   UIState,
   ProcessingCache,
-  ProcessingTiming,  // Add this import
-  DEBOUNCE_DELAY 
+  ProcessingTiming,
+  StepErrorDTO,
 } from '../types';
 import { ApiService } from '../services/api';
-import { SessionUtils, ThemeUtils, debounce } from '../utils';
+import { SessionUtils, ThemeUtils } from '../utils';
 
 /**
  * Session management hook - CLEANUP DISABLED for testing
@@ -18,20 +18,11 @@ import { SessionUtils, ThemeUtils, debounce } from '../utils';
  */
 export function useSession() {
   const [sessionId] = useState(() => SessionUtils.getSessionId());
-  
-  // DISABLED: Tab-close cleanup is causing issues with reload detection
-  // TODO: Re-enable once we have a reliable way to detect actual close vs refresh
-  
-  useEffect(() => {
-    console.log('ℹ️ Session initialized:', sessionId);
-    console.log('ℹ️ Tab-close cleanup is DISABLED - images persist across reloads');
-    
-    // Cleanup on component unmount is disabled
-    return () => {
-      console.log('ℹ️ Session hook unmounting - no cleanup triggered');
-    };
-  }, [sessionId]);
-  
+
+  // Tab-close cleanup is intentionally disabled — images persist across reloads
+  // because reload events and tab-close events are indistinguishable in the browser.
+  // Cleanup is handled server-side via the retention / session-expiry policies.
+
   return { sessionId };
 }
 
@@ -60,35 +51,22 @@ export function useSessionHeartbeat() {
         });
         
         const data = await response.json();
-        
+
         if (data.success) {
-          if (data.created) {
-            console.log('❤️✨ Heartbeat created new session:', sessionId);
-          } else {
-            console.log('❤️ Heartbeat: session active');
-          }
           setIsActive(true);
         } else {
-          console.warn('⚠️ Heartbeat failed:', data.message);
           setIsActive(false);
         }
-      } catch (error) {
-        console.error('❌ Heartbeat error:', error);
+      } catch {
         setIsActive(false);
       }
     };
-    
-    // Send heartbeat immediately on mount
+
     sendHeartbeat();
-    
-    // Then send heartbeat every 30 seconds
     const heartbeatInterval = setInterval(sendHeartbeat, 30000);
-    
-    console.log('❤️ Heartbeat system started - pinging every 30 seconds');
-    
+
     return () => {
       clearInterval(heartbeatInterval);
-      console.log('❤️ Heartbeat system stopped');
     };
   }, [sessionId]);
   
@@ -164,20 +142,17 @@ export function useImages() {
     const loadImagesFromDB = async () => {
       if (!isInitialized) {
         try {
-          console.log('Loading images from database for session:', sessionId);
           const savedImages = await ApiService.getSessionImages(sessionId);
           if (savedImages.length > 0) {
-            console.log('Restored images from database:', savedImages.length);
             setImages(savedImages);
           }
-        } catch (error) {
-          console.error('Error loading images from database:', error);
+        } catch {
           // Continue with empty images if load fails
         }
         setIsInitialized(true);
       }
     };
-    
+
     loadImagesFromDB();
   }, [sessionId, isInitialized]);
   
@@ -208,23 +183,17 @@ export function useImages() {
             reader.onload = (e) => {
               if (e.target?.result) {
                 imageData.dataUrl = e.target.result as string;
-                console.log('Full dataUrl created for:', files[index].name, 'Size:', imageData.dataUrl.length);
               }
               resolve();
             };
-            reader.onerror = () => {
-              console.error('FileReader error for:', files[index].name);
-              resolve(); // Resolve anyway to not block
-            };
+            reader.onerror = () => resolve(); // Resolve anyway to not block
             reader.readAsDataURL(files[index]);
           });
           
           fileReadPromises.push(fileReadPromise);
           newImages.push(imageData);
         } else if (response.status === 'rejected') {
-          // Track failed uploads
           const error = response.reason;
-          console.error(`Failed to upload ${files[index].name}:`, error);
           errors.push(`${files[index].name}: ${error.message || 'Upload failed'}`);
           
           // Check if it's a quota error (507) or image limit error (400)
@@ -240,10 +209,8 @@ export function useImages() {
         }
       });
       
-      // If there were errors, log them
       if (errors.length > 0) {
-        console.error('Upload errors:', errors);
-        throw new Error(`Failed to upload ${errors.length} image(s). Check console for details.`);
+        throw new Error(`Failed to upload ${errors.length} image(s): ${errors.join('; ')}`);
       }
       
       // If quota exceeded, throw error to show popup
@@ -253,16 +220,7 @@ export function useImages() {
         throw error;
       }
       
-      // Wait for all FileReaders to complete
       await Promise.all(fileReadPromises);
-      
-      console.log('All images processed:', newImages.map(img => ({
-        filename: img.filename,
-        hasThumbnail: !!img.thumbnailDataUrl,
-        hasFullImage: !!img.dataUrl,
-        fullImageSize: img.dataUrl?.length || 0
-      })));
-      
       setImages(prev => [...prev, ...newImages]);
       return newImages;
     } catch (error) {
@@ -274,18 +232,21 @@ export function useImages() {
   }, [sessionId]);
   
   const removeImage = useCallback(async (imageId: string) => {
-    // Remove from UI immediately
+    // Remove from UI immediately for instant feedback
     setImages(prev => prev.filter(img => img.id !== imageId));
-    
-    // Delete from database
+
+    // Delete from database — must include auth token so ownership check passes
     try {
-      await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/image/${imageId}`, {
-        method: 'DELETE'
-      });
-      console.log('Image deleted from database:', imageId);
-    } catch (error) {
-      console.error('Failed to delete image from database:', error);
-      // Image already removed from UI, so we can continue
+      const token = localStorage.getItem('pixelflow_access_token');
+      await fetch(
+        `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/image/${imageId}`,
+        {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+    } catch {
+      // Image is already removed from the UI; silently ignore network errors
     }
   }, []);
   
@@ -432,11 +393,35 @@ export function usePipeline() {
 /**
  * Live processing hook with caching
  */
+// Trailing debounce for live preview. Kept snappy so a slow slider drag (which
+// has natural micro-pauses) updates responsively; continuous fast drags still
+// coalesce to one request on settle. Continuous during-drag updates land with
+// the Phase 4.5 incremental engine (downscale + prefix cache).
+const LIVE_PREVIEW_DEBOUNCE_MS = 250;
+
+/** Decode an image data URL so the next paint is immediate. Best-effort. */
+async function decodeImage(dataUrl?: string): Promise<void> {
+  if (!dataUrl) return;
+  try {
+    const img = new Image();
+    img.src = dataUrl;
+    if (img.decode) {
+      await img.decode();
+    }
+  } catch {
+    // Ignore decode failures — we still show whatever we received.
+  }
+}
+
 export function useLiveProcessing() {
   const [results, setResults] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [cache, setCache] = useState<ProcessingCache | null>(null);
+  // Cache lives in a ref (not state): nothing renders from it, and keeping it
+  // out of state makes `processLive` stable, which prevents the live useEffect
+  // from re-firing (and recomputing) after every result.
+  const cacheRef = useRef<ProcessingCache | null>(null);
   const [timingData, setTimingData] = useState<{ total_time: number; step_timings: ProcessingTiming[] }>({ total_time: 0, step_timings: [] });
+  const [stepErrors, setStepErrors] = useState<Array<StepErrorDTO | null> | null>(null);
   const { sessionId } = useSession();
   const abortControllerRef = useRef<AbortController>();
   
@@ -451,10 +436,12 @@ export function useLiveProcessing() {
     const pipelineHash = JSON.stringify({ imageId, pipeline });
     
     // Check cache
-    if (cache && cache.pipelineHash === pipelineHash && 
-        Date.now() - cache.timestamp < 10 * 60 * 1000) {
-      setResults(cache.results);
-      return cache.results;
+    const cached = cacheRef.current;
+    if (cached && cached.pipelineHash === pipelineHash &&
+        Date.now() - cached.timestamp < 10 * 60 * 1000) {
+      setResults(cached.results);
+      setStepErrors(null);
+      return cached.results;
     }
     
     setLoading(true);
@@ -466,46 +453,71 @@ export function useLiveProcessing() {
       });
       
       if (response.success) {
+        // Decode the final image before committing results so the new preview
+        // paints immediately when state updates — otherwise the "Live preview
+        // updated" status flashes before the rendered image actually appears.
+        await decodeImage(response.results[response.results.length - 1]);
+
         setResults(response.results);
         setTimingData({
           total_time: response.total_time || 0,
           step_timings: response.step_timings || []
         });
-        
-        setCache({
+        setStepErrors(response.step_errors ?? null);
+
+        cacheRef.current = {
           pipelineHash,
           results: response.results,
           timestamp: Date.now()
-        });
-        
+        };
+
         return response.results;
       } else {
         throw new Error(response.message);
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') {
-        console.log('Live processing request aborted');
-        return [];
-      }
-      console.error('Live processing error:', error);
+      if (error.name === 'AbortError') return [];
       throw error;
     } finally {
       setLoading(false);
     }
-  }, [sessionId, cache]);
+  }, [sessionId]);
   
-  const debouncedProcessLive = useMemo(
-    () => debounce(processLive, DEBOUNCE_DELAY),
+  // Promise-aware debounce: the returned promise resolves only after the
+  // trailing call actually completes (including image decode). Callers can
+  // therefore `await` it and show a "preview updated" status that reflects the
+  // rendered result, instead of resolving immediately (the old `debounce`
+  // returned void, so `await` was a no-op and the status fired too early).
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const waitersRef = useRef<Array<{ resolve: (v: string[]) => void; reject: (e: any) => void }>>([]);
+
+  const debouncedProcessLive = useCallback(
+    (imageId: string, pipeline: PipelineStep[]): Promise<string[]> =>
+      new Promise<string[]>((resolve, reject) => {
+        waitersRef.current.push({ resolve, reject });
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = setTimeout(async () => {
+          const waiters = waitersRef.current;
+          waitersRef.current = [];
+          try {
+            const r = await processLive(imageId, pipeline);
+            waiters.forEach((w) => w.resolve(r ?? []));
+          } catch (e) {
+            waiters.forEach((w) => w.reject(e));
+          }
+        }, LIVE_PREVIEW_DEBOUNCE_MS);
+      }),
     [processLive]
   );
   
   const clearResults = useCallback(() => {
     setResults([]);
-    setCache(null);
+    setStepErrors(null);
+    cacheRef.current = null;
   }, []);
-  
+
   const invalidateCache = useCallback(() => {
-    setCache(null);
+    cacheRef.current = null;
   }, []);
   
   useEffect(() => {
@@ -513,13 +525,17 @@ export function useLiveProcessing() {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
     };
   }, []);
-  
+
   return {
     results,
     loading,
     timingData,
+    stepErrors,
     processLive: debouncedProcessLive,
     clearResults,
     invalidateCache
@@ -556,11 +572,7 @@ export function useBatchProcessing() {
       
       // Process images one by one
       for (let i = 0; i < imageIds.length; i++) {
-        // Check if cancelled
-        if (isCancelledRef.current) {
-          console.log('Batch processing cancelled');
-          break;
-        }
+        if (isCancelledRef.current) break;
         
         const imageId = imageIds[i];
         
@@ -594,9 +606,8 @@ export function useBatchProcessing() {
               onProgress(i + 1, imageIds.length, result);
             }
           }
-        } catch (imageError) {
-          console.error(`Failed to process image ${i + 1}:`, imageError);
-          // Continue with next image
+        } catch {
+          // Continue with next image on failure
         }
       }
       

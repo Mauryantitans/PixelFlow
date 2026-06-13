@@ -48,32 +48,22 @@ export const Header: React.FC = () => {
   };
 
   const handleLoadPipeline = (loadedPipeline: SavedPipeline) => {
-    console.log('Loading pipeline:', loadedPipeline);
-    console.log('Pipeline data:', loadedPipeline.pipeline_data);
-    console.log('Pipeline data type:', typeof loadedPipeline.pipeline_data);
-    
     if (!loadedPipeline.pipeline_data) {
-      console.error('No pipeline_data');
       showNotification('Invalid pipeline data: missing data', 'error');
       return;
     }
-    
+
     if (!Array.isArray(loadedPipeline.pipeline_data)) {
-      console.error('pipeline_data is not an array:', loadedPipeline.pipeline_data);
       showNotification('Invalid pipeline data: not an array', 'error');
       return;
     }
 
-    const steps = loadedPipeline.pipeline_data.map((step, index) => {
-      console.log('Processing step:', step);
-      return {
-        id: `step_${Date.now()}_${index}`,
-        name: step.name,
-        params: step.params || {},
-      };
-    });
+    const steps = loadedPipeline.pipeline_data.map((step, index) => ({
+      id: `step_${Date.now()}_${index}`,
+      name: step.name,
+      params: step.params || {},
+    }));
 
-    console.log('Converted steps:', steps);
     setPipeline(steps);
     showNotification(`Loaded "${loadedPipeline.name}"`, 'success');
   };

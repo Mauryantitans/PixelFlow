@@ -28,7 +28,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # CORS Origins - Update after frontend deployment
-CORS_ORIGINS=https://your-app.vercel.app,http://localhost:3000
+# NOTE: the env var is ALLOWED_ORIGINS (not CORS_ORIGINS)
+ALLOWED_ORIGINS=https://your-app.vercel.app,http://localhost:3000
+
+# Vercel preview-deployment regex (update prefix to match your project name)
+ALLOWED_ORIGINS_REGEX=https://your-app(-[a-z0-9]+)*\.vercel\.app
 
 # Google OAuth (Optional - if using OAuth)
 # GOOGLE_CLIENT_ID=your-client-id
@@ -90,7 +94,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
 # CORS Origins
-CORS_ORIGINS=http://localhost:3000
+ALLOWED_ORIGINS=http://localhost:3000
 
 # Google OAuth (Optional)
 # GOOGLE_CLIENT_ID=
@@ -115,7 +119,7 @@ REACT_APP_API_URL=http://localhost:8000/api
 - [ ] DATABASE_URL from Render PostgreSQL
 - [ ] USE_SQLITE set to False
 - [ ] IMAGE_STORAGE set to database
-- [ ] CORS_ORIGINS includes localhost for testing
+- [ ] ALLOWED_ORIGINS includes localhost for testing
 
 ### After Frontend Deployment
 - [ ] Update CORS_ORIGINS with Vercel URL

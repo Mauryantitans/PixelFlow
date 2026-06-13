@@ -34,17 +34,9 @@ export const LoadPipelineModal: React.FC<LoadPipelineModalProps> = ({
     try {
       if (activeTab === 'my') {
         const pipelines = await pipelineService.getUserPipelines();
-        console.log('📥 Received user pipelines:', pipelines);
-        console.log('First pipeline:', pipelines[0]);
-        if (pipelines.length > 0) {
-          console.log('First pipeline.pipeline_data:', pipelines[0].pipeline_data);
-          console.log('Type:', typeof pipelines[0].pipeline_data);
-          console.log('Is Array:', Array.isArray(pipelines[0].pipeline_data));
-        }
         setUserPipelines(pipelines);
       } else {
         const pipelines = await pipelineService.getPublicPipelines();
-        console.log('📥 Received public pipelines:', pipelines);
         setPublicPipelines(pipelines);
       }
     } catch (err: any) {

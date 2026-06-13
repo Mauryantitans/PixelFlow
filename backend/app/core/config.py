@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import sys
+import logging
 from typing import Optional
 from dotenv import load_dotenv
 from .security_config import SessionSecurity, CORSSettings, FileUploadSecurity
@@ -8,14 +10,16 @@ from .security_config import SessionSecurity, CORSSettings, FileUploadSecurity
 env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
+_DEFAULT_SECRET = "your-secret-key-change-in-production"
+
 class Settings:
     # App settings
     APP_NAME: str = os.environ.get("APP_NAME", "PixelFlow")
     VERSION: str = os.environ.get("VERSION", "1.1.0")
     DEBUG: bool = os.environ.get("DEBUG", "False").lower() == "true"
-    
+
     # Image storage settings
-    IMAGE_STORAGE: str = os.environ.get("IMAGE_STORAGE", "filesystem")  # Options: filesystem, database
+    IMAGE_STORAGE: str = os.environ.get("IMAGE_STORAGE", "database")  # Options: filesystem, database
     
     # File storage settings
     BASE_DIR: Path = Path(__file__).parent.parent.parent
@@ -47,14 +51,6 @@ class Settings:
     # CORS Regex Pattern - for dynamic domains like Vercel preview deployments
     CORS_ORIGIN_REGEX: str = os.environ.get("ALLOWED_ORIGINS_REGEX", "")
     
-    # Log CORS origins for debugging (only first time)
-    import logging
-    _logger = logging.getLogger(__name__)
-    _logger.info(f"CORS Configuration:")
-    _logger.info(f"  Environment ALLOWED_ORIGINS: {_env_origins if _env_origins else 'Not set'}")
-    _logger.info(f"  Parsed CORS_ORIGINS ({len(CORS_ORIGINS)} origins): {CORS_ORIGINS}")
-    _logger.info(f"  CORS_ORIGIN_REGEX: {CORS_ORIGIN_REGEX if CORS_ORIGIN_REGEX else 'Not set'}")
-    
     # SQLite fallback for development
     USE_SQLITE: bool = os.environ.get("USE_SQLITE", "False").lower() == "true"
     
@@ -72,20 +68,45 @@ class Settings:
             DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
     
     # Authentication settings
-    SECRET_KEY: str = os.environ.get("SECRET_KEY", "your-secret-key-change-in-production")
+    SECRET_KEY: str = os.environ.get("SECRET_KEY", _DEFAULT_SECRET)
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = SessionSecurity.ACCESS_TOKEN_EXPIRE_MINUTES
     REFRESH_TOKEN_EXPIRE_DAYS: int = SessionSecurity.REFRESH_TOKEN_EXPIRE_DAYS
-    
+
     # Google OAuth settings
     GOOGLE_CLIENT_ID: str = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.environ.get("GOOGLE_CLIENT_SECRET", "")
     GOOGLE_REDIRECT_URI: str = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:3000/auth/google/callback")
-    
+
     def __init__(self):
         # Create directories if they don't exist
         self.UPLOAD_DIR.mkdir(exist_ok=True)
         self.PROCESSED_DIR.mkdir(exist_ok=True)
+
+        # ------------------------------------------------------------------
+        # Startup validation — fail fast rather than run insecurely
+        # ------------------------------------------------------------------
+        _logger = logging.getLogger(__name__)
+        is_production = not self.DEBUG
+
+        if is_production and self.SECRET_KEY == _DEFAULT_SECRET:
+            _logger.critical(
+                "FATAL: SECRET_KEY is still the default insecure value. "
+                "Set SECRET_KEY environment variable before running in production."
+            )
+            sys.exit(1)
+
+        if is_production and not os.environ.get("ALLOWED_ORIGINS"):
+            _logger.warning(
+                "ALLOWED_ORIGINS is not set. CORS will allow all localhost origins. "
+                "Set ALLOWED_ORIGINS to your production frontend URL."
+            )
+
+        if self.DATABASE_URL == "postgresql://postgres:postgres@localhost:5432/pixelflow" and is_production:
+            _logger.warning(
+                "DATABASE_URL appears to be the default local value. "
+                "Make sure DATABASE_URL is correctly set for production."
+            )
 
 # Global settings instance
 settings = Settings()

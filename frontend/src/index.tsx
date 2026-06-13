@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import AppRoutes from './AppRoutes';
+import { OperationSchemaProvider } from './contexts/OperationSchemaContext';
 import './index.css';
 
 const root = ReactDOM.createRoot(
@@ -9,6 +10,8 @@ const root = ReactDOM.createRoot(
 
 root.render(
   <React.StrictMode>
-    <AppRoutes />
+    <OperationSchemaProvider>
+      <AppRoutes />
+    </OperationSchemaProvider>
   </React.StrictMode>
 );

@@ -43,8 +43,12 @@ def create_or_update_session(
         
         logger.info(f"Updated session: {session_id} (user_id: {session.user_id}, last_active: {current_time})")
     else:
-        # Create new session with current time
-        expires_at = current_time + timedelta(hours=SESSION_EXPIRY_HOURS)
+        # Create new session — lifetime comes from the editable DB settings
+        # (guests vs. registered users), falling back to the module default.
+        from app.utils.settings_manager import get_retention_policy
+        policy = get_retention_policy(db)
+        lifetime = policy["user_session_lifetime"] if user_id is not None else policy["guest_session_lifetime"]
+        expires_at = current_time + (lifetime or timedelta(hours=SESSION_EXPIRY_HOURS))
         session = DBSession(
             id=session_id,
             user_id=user_id,

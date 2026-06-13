@@ -56,7 +56,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   }, [isOpen]);
 
   const loadData = async () => {
-    console.log('📥 Loading admin data...');
     setRefreshing(true);
     try {
       const [storageResp, cleanupResp, settingsResp, dbOverviewResp] = await Promise.all([
@@ -73,29 +72,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
-      
-      console.log('✅ Admin data loaded:', {
-        storage: storageResp.data,
-        database: dbOverviewResp.data
-      });
-      
+
       setStats({
         storage: storageResp.data,
         cleanup: cleanupResp.data
       });
-      
-      // CRITICAL: Only update settings if user hasn't made unsaved changes
+
+      // Only update settings if user hasn't made unsaved changes
       const hasUnsavedChanges = editedSettings && JSON.stringify(settings) !== JSON.stringify(editedSettings);
-      
+
       if (!hasUnsavedChanges) {
-        // Safe to update both settings and editedSettings
         setSettings(settingsResp.data.settings);
         setEditedSettings(JSON.parse(JSON.stringify(settingsResp.data.settings)));
-        console.log('✅ Settings updated (no unsaved changes)');
       } else {
-        // User has unsaved changes - only update the baseline 'settings' for comparison
+        // User has unsaved changes — only update the baseline for comparison
         setSettings(settingsResp.data.settings);
-        console.log('⚠️ Preserving unsaved edits - NOT overwriting editedSettings');
       }
       
       setDatabaseData((prev: any) => ({
@@ -163,10 +154,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
       // Refresh other stats (storage, cleanup, database overview)
       await loadData();
       
-      console.log('✅ Settings saved and synced with server');
     } catch (error) {
       alert('Failed to save settings.');
-      console.error('Save error:', error);
     } finally {
       setSaving(false);
     }
@@ -205,9 +194,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
         loadDetailedData();
       }
     } catch (error: any) {
-      console.error('PIN error:', error);
-      console.error('Error response:', error.response);
-      
       let errorMessage = 'An error occurred';
       
       if (error.response?.data?.detail) {
@@ -242,18 +228,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   };
 
   const loadDetailedData = async () => {
-    console.log('Loading detailed database data...');
-    console.log('Token:', token ? 'Token exists' : 'No token!');
-    console.log('API Base:', apiBase);
-    
     setLoadingDetailedData(true);
-    
+
     try {
-      console.log('Making API calls to:', {
-        users: `${apiBase}/database/users?limit=100`,
-        sessions: `${apiBase}/database/sessions?limit=50`
-      });
-      
       const [usersResp, sessionsResp] = await Promise.all([
         axios.get(`${apiBase}/database/users?limit=100`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -262,27 +239,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
           headers: { Authorization: `Bearer ${token}` }
         })
       ]);
-      
-      console.log('✅ Users response:', usersResp.data);
-      console.log('✅ Sessions response:', sessionsResp.data);
-      
-      // Log each user's image count for debugging
-      usersResp.data.users.forEach((user: any) => {
-        console.log(`📊 User ${user.email}: ${user.image_count} images`);
-      });
-      
+
       setDatabaseData((prev: any) => ({
         ...prev,
         detailed_users: usersResp.data.users || [],
         detailed_sessions: sessionsResp.data.sessions || []
       }));
-      
-      console.log('✅ Detailed data loaded successfully');
     } catch (error: any) {
-      console.error('❌ Failed to load detailed data:', error);
-      console.error('❌ Error response:', error.response);
-      console.error('❌ Error status:', error.response?.status);
-      console.error('❌ Error data:', error.response?.data);
       
       let errorMsg = 'Failed to load database details.';
       if (error.response?.status === 401) {
@@ -321,13 +284,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const loadUserImages = async (userId: number) => {
     setLoadingUserImages(true);
     try {
-      console.log(`Loading images for user ${userId}...`);
       const response = await axios.get(`${apiBase}/database/users/${userId}/images`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      console.log(`User ${userId} images:`, response.data);
-      console.log(`📊 User ${userId} - Backend says ${response.data.total} total, returned ${response.data.images?.length || 0} images`);
+
       setUserImages(response.data.images || []);
     } catch (error) {
       console.error(`Failed to load images for user ${userId}:`, error);
@@ -340,12 +300,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const loadUserPipelines = async (userId: number) => {
     setLoadingUserPipelines(true);
     try {
-      console.log(`Loading pipelines for user ${userId}...`);
       const response = await axios.get(`${apiBase}/database/users/${userId}/pipelines`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      console.log(`User ${userId} pipelines:`, response.data);
+
       setUserPipelines(response.data.pipelines || []);
     } catch (error) {
       console.error(`Failed to load pipelines for user ${userId}:`, error);
@@ -381,8 +339,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      
-      console.log('Fix orphans result:', response.data);
       
       alert(
         `✅ Fixed ${response.data.fixed} orphaned images!\n` +
@@ -432,8 +388,6 @@ Type DELETE to confirm.`)) {
           params: { confirm: 'DELETE_USER' }
         }
       );
-      
-      console.log('Delete user result:', response.data);
       
       alert(
         `✅ Successfully deleted user and all their data!\n\n` +
@@ -532,8 +486,6 @@ Type DELETE to confirm.`)) {
           params: { confirm: 'DELETE_ALL_IMAGES' }
         }
       );
-      
-      console.log('Delete all images result:', response.data);
       
       alert(
         `✅ Successfully deleted ALL images!\n\n` +

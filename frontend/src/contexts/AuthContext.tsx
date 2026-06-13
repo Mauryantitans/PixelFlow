@@ -28,16 +28,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   useEffect(() => {
     const initAuth = async () => {
       const token = authService.getAccessToken();
-      console.log('🔐 Auth init - token exists:', !!token);
-      
       if (token) {
         try {
-          console.log('📡 Fetching current user...');
           const userData = await authService.getCurrentUser();
-          console.log('✅ User fetched:', userData);
           setUser(userData);
         } catch (error) {
-          console.error('❌ Failed to fetch user:', error);
           authService.clearTokens();
         }
       }
@@ -49,51 +44,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string) => {
     try {
-      console.log('🔐 Logging in...');
       const authResponse = await authService.login(email, password);
-      console.log('✅ Login response:', authResponse);
-      
-      // Store tokens
       authService.setTokens(authResponse.access_token, authResponse.refresh_token);
-      console.log('💾 Tokens stored');
-      
-      // Verify token was stored
-      const storedToken = authService.getAccessToken();
-      console.log('🔍 Token verification:', {
-        tokenLength: storedToken?.length,
-        tokenStart: storedToken?.substring(0, 20) + '...'
-      });
-      
-      // Fetch user data
-      console.log('📡 Fetching user data after login...');
       const userData = await authService.getCurrentUser();
-      console.log('✅ User data fetched:', userData);
       setUser(userData);
     } catch (error: any) {
-      console.error('❌ Login failed:', error);
-      console.error('Error details:', error.response?.data);
       throw new Error(error.response?.data?.detail || 'Login failed');
     }
   };
 
   const register = async (data: RegisterRequest) => {
     try {
-      console.log('📝 Registering user...');
-      const userData = await authService.register(data);
-      console.log('✅ User registered:', userData);
-      
+      await authService.register(data);
       // Auto-login after registration
-      console.log('🔄 Auto-logging in after registration...');
       await login(data.email, data.password);
     } catch (error: any) {
-      console.error('❌ Registration failed:', error);
-      console.error('Error details:', error.response?.data);
       throw new Error(error.response?.data?.detail || 'Registration failed');
     }
   };
 
   const logout = async () => {
-    console.log('👋 Logging out...');
     await authService.logout(sessionId);
     setUser(null);
   };

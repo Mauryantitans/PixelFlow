@@ -110,3 +110,24 @@ def invalidate_cache():
     """Invalidate settings cache (call after updates)"""
     global _settings_cache
     _settings_cache = None
+
+
+def get_retention_policy(db: Session) -> dict:
+    """
+    Derive retention / session-lifetime timedeltas from the editable DB settings.
+
+    This is the single source of truth for these values — enforcement code
+    (cleanup service, session creation) must read here rather than from the
+    hardcoded defaults in app/core/business_rules.py, otherwise admin-panel
+    changes silently have no effect.
+    """
+    s = get_settings(db)
+    return {
+        "guest_upload": timedelta(hours=s.guest_upload_retention_hours),
+        "user_upload": timedelta(days=s.free_user_upload_retention_days),
+        "guest_processed": timedelta(hours=s.guest_processed_retention_hours),
+        "user_processed": timedelta(hours=s.free_user_processed_retention_hours),
+        "session_grace": timedelta(hours=s.session_grace_period_hours),
+        "guest_session_lifetime": timedelta(hours=s.guest_session_lifetime_hours),
+        "user_session_lifetime": timedelta(days=s.user_session_lifetime_days),
+    }

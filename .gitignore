@@ -49,6 +49,7 @@ frontend/.env.production
 *.sqlite3
 backend/pixelflow.db
 backend/*.db
+*.db.stale-backup-*
 
 # Database Backups
 backend/backups/

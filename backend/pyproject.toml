@@ -1,0 +1,47 @@
+[project]
+name = "pixelflow-backend"
+version = "1.1.0"
+description = "PixelFlow backend — visual image-processing pipeline builder"
+# Production runs 3.11 (runtime.txt / Docker); local dev venvs may be 3.10.
+requires-python = ">=3.10"
+
+# Runtime deps are pinned in requirements.txt; dev/test deps in requirements-dev.txt.
+
+[tool.ruff]
+line-length = 100
+# Target the lowest supported runtime so autofixes stay 3.10-compatible.
+target-version = "py310"
+# Existing modules predate linting; bring them in incrementally. New code under
+# app/processing is held to the full rule set.
+extend-exclude = ["alembic", "env", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# E501 (line length) is enforced by the formatter; ignore the lint variant.
+ignore = [
+    "E501",   # line length is handled by the formatter
+    "B008",   # FastAPI Depends() in argument defaults is idiomatic
+    "UP038",  # isinstance(x, (A, B)) tuple form is fine and clearer
+]
+
+[tool.ruff.lint.per-file-ignores]
+"app/processing/operations/_builtins.py" = ["E731"]  # small inline lambdas are intentional
+
+[tool.mypy]
+python_version = "3.11"
+# Incremental adoption: type-check the new, fully-typed processing package and
+# the datetime helper first. Expand `files` as modules are annotated.
+files = ["app/processing", "app/utils/datetime_utils.py"]
+# Process imported (legacy) modules for type info but don't report their errors;
+# expand `files` as those modules are annotated.
+follow_imports = "silent"
+ignore_missing_imports = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]

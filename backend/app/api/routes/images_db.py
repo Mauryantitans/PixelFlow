@@ -20,13 +20,12 @@ from sqlalchemy import func
 from ...models import ImageData, UploadResponse
 from ...core.config import settings
 from ...core.database import get_db
-from ...core.business_rules import UserLimits
-from ...models.db_models import Session as DBSession, UploadedImage, ProcessedImage, SystemSettings
+from ...models.db_models import Session as DBSession, UploadedImage, ProcessedImage, SystemSettings, User
 from ...utils.session_db import create_or_update_session, get_session_images, cleanup_expired_sessions
 from ...utils.quota_manager import check_storage_quota
+from ...utils.settings_manager import get_settings
 from ...utils.image_processing import ImageProcessor
-from ...utils.auth import get_current_user_optional
-from ...models.db_models import User
+from ...utils.auth import get_current_user_optional, get_current_active_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -44,6 +43,44 @@ def bytes_to_base64_dataurl(image_bytes: bytes, mime_type: str) -> str:
     """Convert image bytes to base64 data URL"""
     b64 = base64.b64encode(image_bytes).decode('utf-8')
     return f"data:{mime_type};base64,{b64}"
+
+
+def process_image_bytes(content: bytes):
+    """Decode raw upload bytes and re-encode for storage.
+
+    Preserves transparency (stores PNG/RGBA) when the source has an alpha
+    channel; otherwise normalises to RGB and stores JPEG. Returns
+    (img_bytes, thumbnail_bytes, width, height, image_format, mime_type).
+    Raises ValueError / PIL errors on undecodable input (caller maps to 400).
+    """
+    img = PILImage.open(io.BytesIO(content))
+
+    has_alpha = img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info)
+    if has_alpha:
+        img = img.convert('RGBA')
+        image_format, mime_type = 'PNG', 'image/png'
+    else:
+        if img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
+        image_format, mime_type = 'JPEG', 'image/jpeg'
+
+    width, height = img.size
+
+    def _encode(image: PILImage.Image, quality: int) -> bytes:
+        buf = io.BytesIO()
+        if image_format == 'JPEG':
+            image.save(buf, format='JPEG', quality=quality)
+        else:
+            image.save(buf, format='PNG', optimize=True)
+        return buf.getvalue()
+
+    img_bytes = _encode(img, 95)
+
+    thumbnail_img = img.copy()
+    thumbnail_img.thumbnail(settings.THUMBNAIL_SIZE, PILImage.Resampling.LANCZOS)
+    thumbnail_bytes = _encode(thumbnail_img, 85)
+
+    return img_bytes, thumbnail_bytes, width, height, image_format, mime_type
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -64,7 +101,12 @@ async def upload_image(
         # Read file content first to check size
         content = await file.read()
         file_size = len(content)
-        
+
+        # Reject empty uploads up front with a clear message (otherwise PIL fails
+        # later with a cryptic decode error).
+        if file_size == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
         # Validate file size
         if file_size > settings.MAX_FILE_SIZE:
             raise HTTPException(status_code=413, detail="File too large")
@@ -155,33 +197,11 @@ async def upload_image(
         # Generate unique image ID
         image_id = str(uuid.uuid4())
         
-        # Load image to get metadata and create thumbnail
+        # Decode + re-encode for storage (preserves transparency where present).
         try:
-            img = PILImage.open(io.BytesIO(content))
-            
-            # Convert problematic modes
-            if img.mode == 'RGBA':
-                background = PILImage.new('RGB', img.size, (255, 255, 255))
-                background.paste(img, mask=img.split()[-1])
-                img = background
-            elif img.mode not in ('RGB', 'L'):
-                img = img.convert('RGB')
-            
-            width, height = img.size
-            image_format = 'JPEG'
-            
-            # Save processed image back to bytes
-            img_byte_arr = io.BytesIO()
-            img.save(img_byte_arr, format=image_format, quality=95)
-            img_bytes = img_byte_arr.getvalue()
-            
-            # Create thumbnail
-            thumbnail_img = img.copy()
-            thumbnail_img.thumbnail(settings.THUMBNAIL_SIZE, PILImage.Resampling.LANCZOS)
-            thumb_byte_arr = io.BytesIO()
-            thumbnail_img.save(thumb_byte_arr, format=image_format, quality=85)
-            thumbnail_bytes = thumb_byte_arr.getvalue()
-            
+            img_bytes, thumbnail_bytes, width, height, image_format, mime_type = (
+                process_image_bytes(content)
+            )
         except Exception as e:
             logger.error(f"Error processing image: {e}")
             raise HTTPException(status_code=400, detail=f"Unable to process image: {str(e)}")
@@ -198,15 +218,15 @@ async def upload_image(
             height=height,
             format=image_format,
             size_bytes=len(img_bytes),
-            mime_type=file.content_type or "image/jpeg"
+            mime_type=mime_type
         )
-        
+
         db.add(uploaded_image)
         db.commit()
         db.refresh(uploaded_image)
-        
+
         # Create thumbnail base64 for immediate display
-        thumbnail_base64 = f"data:image/jpeg;base64,{base64.b64encode(thumbnail_bytes).decode('utf-8')}"
+        thumbnail_base64 = f"data:{mime_type};base64,{base64.b64encode(thumbnail_bytes).decode('utf-8')}"
         
         logger.info(f"Image uploaded to database: {image_id} ({file.filename}) - User: {user_id or 'Guest'}")
         
@@ -234,16 +254,151 @@ async def upload_image(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
+@router.post("/upload-multiple")
+async def upload_multiple_images(
+    request: Request,
+    files: List[UploadFile] = File(...),
+    session_id: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Upload multiple images to the database (DB-storage equivalent of /upload).
+
+    Per-file failures are isolated and reported; successfully decoded images are
+    persisted in a single commit. Storage-quota and per-session count limits are
+    enforced cumulatively across the batch.
+    """
+    user_id = current_user.id if current_user else None
+    is_admin = current_user.is_admin if current_user else False
+
+    db_settings = get_settings(db)
+    max_per_upload = db_settings.max_images_per_upload or 20
+    if len(files) > max_per_upload:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many files. Maximum {max_per_upload} per upload.",
+        )
+
+    ip_address = request.client.host if request.client else None
+    device_info = request.headers.get("user-agent")
+    create_or_update_session(db, session_id, user_id, device_info, ip_address)
+
+    # Cumulative baselines for the batch.
+    existing_count = db.query(func.count(UploadedImage.id)).filter(
+        UploadedImage.session_id == session_id
+    ).scalar() or 0
+    max_images = (
+        db_settings.free_user_max_images_per_session
+        if user_id else db_settings.guest_max_images_per_session
+    )
+    accepted_bytes = 0
+    accepted = 0
+
+    uploaded_images: List[dict] = []
+    failed_uploads: List[dict] = []
+
+    for file in files:
+        try:
+            content = await file.read()
+            file_size = len(content)
+            if file_size == 0:
+                raise ValueError("Uploaded file is empty")
+            if file_size > settings.MAX_FILE_SIZE:
+                raise ValueError("File too large")
+            ext = Path(file.filename or "image").suffix.lower()
+            if ext not in settings.ALLOWED_EXTENSIONS:
+                raise ValueError(
+                    f"File type not supported. Allowed: {', '.join(settings.ALLOWED_EXTENSIONS)}"
+                )
+
+            if existing_count + accepted + 1 > max_images:
+                raise ValueError(
+                    f"Maximum of {max_images} images per session reached"
+                )
+
+            quota_check = check_storage_quota(
+                db, user_id=user_id, session_id=session_id,
+                new_file_size=accepted_bytes + file_size, is_admin=is_admin,
+            )
+            if not quota_check["allowed"]:
+                raise ValueError(
+                    f"Storage quota exceeded ({quota_check['quota_mb']}MB)"
+                )
+
+            img_bytes, thumbnail_bytes, width, height, image_format, mime_type = (
+                process_image_bytes(content)
+            )
+
+            image_id = str(uuid.uuid4())
+            db.add(UploadedImage(
+                id=image_id,
+                session_id=session_id,
+                user_id=user_id,
+                filename=file.filename or "image",
+                image_data=img_bytes,
+                thumbnail_data=thumbnail_bytes,
+                width=width,
+                height=height,
+                format=image_format,
+                size_bytes=len(img_bytes),
+                mime_type=mime_type,
+            ))
+
+            accepted += 1
+            accepted_bytes += len(img_bytes)
+            uploaded_images.append({
+                "image": ImageData(
+                    id=image_id,
+                    filename=file.filename or "image",
+                    file_path=f"db://{image_id}",
+                    session_id=session_id,
+                    size_bytes=len(img_bytes),
+                    width=width,
+                    height=height,
+                    format=image_format,
+                ).dict(),
+                "thumbnail": bytes_to_base64_dataurl(thumbnail_bytes, mime_type),
+            })
+        except Exception as e:
+            logger.warning(f"Failed to upload {getattr(file, 'filename', '?')}: {e}")
+            failed_uploads.append({"filename": getattr(file, "filename", None), "error": str(e)})
+
+    try:
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Batch upload commit failed: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save uploaded images")
+
+    return JSONResponse(content={
+        "success": True,
+        "uploaded_count": len(uploaded_images),
+        "failed_count": len(failed_uploads),
+        "uploaded_images": uploaded_images,
+        "failed_uploads": failed_uploads,
+        "message": f"Uploaded {len(uploaded_images)} of {len(files)} images successfully",
+    })
+
+
 @router.get("/session/{session_id}/images")
 async def get_session_images_list(
     session_id: str,
     include_data: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get all images for a session"""
     try:
+        # Verify the session belongs to the requesting user (or is a guest session)
+        session_obj = db.query(DBSession).filter(DBSession.id == session_id).first()
+        if session_obj:
+            # If the session is owned by a user, only that user (or an admin) may view it
+            if session_obj.user_id is not None:
+                if current_user is None or (current_user.id != session_obj.user_id and not current_user.is_admin):
+                    raise HTTPException(status_code=403, detail="Not authorized to view this session")
+
         images = get_session_images(db, session_id)
-        
+
         result = []
         for img in images:
             image_data = {
@@ -260,7 +415,7 @@ async def get_session_images_list(
             
             if include_data:
                 # Include base64 encoded image and thumbnail
-                image_data["thumbnail"] = bytes_to_base64_dataurl(img.thumbnail_data, "image/jpeg")
+                image_data["thumbnail"] = bytes_to_base64_dataurl(img.thumbnail_data, img.mime_type)
                 image_data["image"] = bytes_to_base64_dataurl(img.image_data, img.mime_type)
             
             result.append(image_data)
@@ -280,25 +435,32 @@ async def get_session_images_list(
 async def get_image(
     image_id: str,
     thumbnail: bool = False,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Get an image from database"""
     try:
         img = db.query(UploadedImage).filter(UploadedImage.id == image_id).first()
-        
+
         if not img:
             raise HTTPException(status_code=404, detail="Image not found")
-        
+
+        # Enforce ownership: only the owning user (or admin) may retrieve a user-owned image.
+        # Guest images (user_id=None) are accessible via session context (frontend passes session).
+        if img.user_id is not None:
+            if current_user is None or (current_user.id != img.user_id and not current_user.is_admin):
+                raise HTTPException(status_code=403, detail="Not authorized to access this image")
+
         # Update last accessed
-        img.last_accessed = datetime.utcnow()
+        img.last_accessed = datetime.now(timezone.utc)
         db.commit()
-        
+
         # Return appropriate data
         if thumbnail and img.thumbnail_data:
-            return Response(content=img.thumbnail_data, media_type="image/jpeg")
+            return Response(content=img.thumbnail_data, media_type=img.mime_type)
         else:
             return Response(content=img.image_data, media_type=img.mime_type)
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -309,25 +471,33 @@ async def get_image(
 @router.delete("/image/{image_id}")
 async def delete_image(
     image_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
     """Delete an image from database"""
     try:
         img = db.query(UploadedImage).filter(UploadedImage.id == image_id).first()
-        
+
         if not img:
             raise HTTPException(status_code=404, detail="Image not found")
-        
+
+        # Ownership check: only the image owner or an admin may delete.
+        # Guest images (user_id=None) can only be deleted when no user is set,
+        # meaning the request must be from the same guest session (no token needed).
+        if img.user_id is not None:
+            if current_user is None or (current_user.id != img.user_id and not current_user.is_admin):
+                raise HTTPException(status_code=403, detail="Not authorized to delete this image")
+
         db.delete(img)
         db.commit()
-        
+
         logger.info(f"Image deleted from database: {image_id}")
-        
+
         return JSONResponse(content={
             "success": True,
             "message": "Image deleted successfully"
         })
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -450,8 +620,11 @@ async def session_heartbeat(
 
 
 @router.get("/cleanup-expired")
-async def cleanup_expired(db: Session = Depends(get_db)):
-    """Cleanup expired sessions (can be called by cron job)"""
+async def cleanup_expired(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin)
+):
+    """Cleanup expired sessions (admin only)"""
     try:
         count = cleanup_expired_sessions(db)
         

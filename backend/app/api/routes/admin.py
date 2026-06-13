@@ -4,7 +4,7 @@ from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 import logging
 from app.core.database import get_db
-from app.core.business_rules import UserLimits, ImageRetention, SessionPolicy
+from app.utils.datetime_utils import ensure_aware
 from app.models.db_models import User, LoginAttempt, SavedPipeline, ProcessingHistory, UploadedImage, ProcessedImage, Session as DBSession
 from app.models.schemas import PinRequest
 from app.utils.auth import get_current_active_admin, get_current_user
@@ -123,7 +123,16 @@ async def list_all_users(
 ):
     """List all users (admin only)"""
     users = db.query(User).offset(skip).limit(limit).all()
-    
+
+    # Fetch pipeline counts in one query to avoid N+1
+    user_ids = [u.id for u in users]
+    pipeline_counts = dict(
+        db.query(SavedPipeline.user_id, func.count(SavedPipeline.id))
+        .filter(SavedPipeline.user_id.in_(user_ids))
+        .group_by(SavedPipeline.user_id)
+        .all()
+    ) if user_ids else {}
+
     return {
         "total": db.query(func.count(User.id)).scalar(),
         "users": [
@@ -135,7 +144,7 @@ async def list_all_users(
                 "is_active": u.is_active,
                 "is_admin": u.is_admin,
                 "created_at": u.created_at,
-                "pipeline_count": len(u.saved_pipelines)
+                "pipeline_count": pipeline_counts.get(u.id, 0)
             }
             for u in users
         ]
@@ -203,15 +212,18 @@ async def get_cleanup_stats(
 ):
     """Get cleanup statistics - what would be cleaned (admin only)"""
     stats = CleanupService.get_cleanup_stats(db)
-    
-    # Add current settings
+
+    # Report the actual editable settings that drive cleanup, so this preview
+    # matches what the cleanup service will really do.
+    from ...utils.settings_manager import get_settings
+    s = get_settings(db)
     stats["settings"] = {
-        "guest_upload_retention_hours": int(ImageRetention.GUEST_UPLOAD_RETENTION.total_seconds() / 3600),
-        "user_upload_retention_days": int(ImageRetention.FREE_USER_UPLOAD_RETENTION.total_seconds() / 86400),
-        "session_lifetime_hours": int(SessionPolicy.GUEST_SESSION_LIFETIME.total_seconds() / 3600),
-        "cleanup_enabled": True
+        "guest_upload_retention_hours": s.guest_upload_retention_hours,
+        "user_upload_retention_days": s.free_user_upload_retention_days,
+        "session_lifetime_hours": s.guest_session_lifetime_hours,
+        "cleanup_enabled": s.enable_auto_cleanup
     }
-    
+
     return stats
 
 
@@ -236,7 +248,9 @@ async def get_storage_overview(
     db: Session = Depends(get_db)
 ):
     """Get storage usage overview (admin only)"""
-    
+    from ...utils.settings_manager import get_settings
+    settings_row = get_settings(db)
+
     # Count images
     total_uploaded = db.query(func.count(UploadedImage.id)).scalar()
     total_processed = db.query(func.count(ProcessedImage.id)).scalar()
@@ -253,18 +267,6 @@ async def get_storage_overview(
         DBSession.last_active > active_cutoff
     ).scalar()
     
-    # Debug: Log all sessions and their last_active times
-    all_sessions = db.query(DBSession).all()
-    logger.info(f"\n=== SESSION DEBUG ===")
-    logger.info(f"Total sessions in DB: {total_sessions}")
-    logger.info(f"Active cutoff time: {active_cutoff}")
-    logger.info(f"Active sessions (last 5 min): {active_sessions}")
-    for s in all_sessions:
-        age_seconds = (datetime.now(timezone.utc) - s.last_active.replace(tzinfo=timezone.utc) if s.last_active.tzinfo else s.last_active).total_seconds() if s.last_active else 999999
-        logger.info(f"  Session {s.id[:20]}... - User: {s.user_id}, Last Active: {s.last_active}, Age: {age_seconds:.0f}s")
-    logger.info(f"=== END DEBUG ===\n")
-    
-    logger.info(f"Session counts - Total: {total_sessions}, Active (last 5 min): {active_sessions}")
     
     # User breakdown
     guest_images = db.query(func.count(UploadedImage.id)).filter(
@@ -292,9 +294,9 @@ async def get_storage_overview(
             "expired": total_sessions - active_sessions
         },
         "limits": {
-            "max_pipelines_per_user": UserLimits.FREE_USER_MAX_PIPELINES,
-            "guest_storage_quota_mb": UserLimits.GUEST_STORAGE_QUOTA_MB,
-            "user_storage_quota_mb": UserLimits.FREE_USER_STORAGE_QUOTA_MB
+            "max_pipelines_per_user": settings_row.free_user_max_pipelines,
+            "guest_storage_quota_mb": settings_row.guest_storage_quota_mb,
+            "user_storage_quota_mb": settings_row.free_user_storage_quota_mb
         }
     }
 
@@ -472,15 +474,22 @@ async def get_database_overview(
             for u in recent_users
         ]
         
-        # Get recent sessions
+        # Get recent sessions — batch image counts to avoid N+1
         recent_sessions = db.query(DBSession).order_by(DBSession.created_at.desc()).limit(20).all()
+        recent_session_ids = [s.id for s in recent_sessions]
+        session_image_counts = dict(
+            db.query(UploadedImage.session_id, func.count(UploadedImage.id))
+            .filter(UploadedImage.session_id.in_(recent_session_ids))
+            .group_by(UploadedImage.session_id)
+            .all()
+        ) if recent_session_ids else {}
         overview["recent_sessions"] = [
             {
                 "id": s.id,
                 "user_id": s.user_id,
                 "created_at": s.created_at.isoformat(),
                 "expires_at": s.expires_at.isoformat(),
-                "image_count": db.query(func.count(UploadedImage.id)).filter(UploadedImage.session_id == s.id).scalar()
+                "image_count": session_image_counts.get(s.id, 0)
             }
             for s in recent_sessions
         ]
@@ -497,34 +506,41 @@ async def get_all_users_data(
 ):
     """Get detailed user data (requires PIN verification)"""
     users = db.query(User).offset(skip).limit(limit).all()
-    
-    logger.info(f"\n\n=== DEBUG: Getting user data ===")
-    logger.info(f"Found {len(users)} users in database")
-    
-    result_users = []
-    for u in users:
-        image_count = db.query(func.count(UploadedImage.id)).filter(UploadedImage.user_id == u.id).scalar()
-        logger.info(f"User {u.email} (ID: {u.id}): {image_count} images")
-        
-        result_users.append({
-            "id": u.id,
-            "email": u.email,
-            "username": u.username,
-            "full_name": u.full_name,
-            "is_active": u.is_active,
-            "is_admin": u.is_admin,
-            "oauth_provider": u.oauth_provider,
-            "profile_picture": u.profile_picture,
-            "created_at": u.created_at.isoformat(),
-            "pipeline_count": len(u.saved_pipelines),
-            "image_count": image_count
-        })
-    
-    logger.info(f"=== END DEBUG ===")
-    
+    user_ids = [u.id for u in users]
+
+    # Batch pipeline counts and image counts — avoids N+1 queries
+    pipeline_counts = dict(
+        db.query(SavedPipeline.user_id, func.count(SavedPipeline.id))
+        .filter(SavedPipeline.user_id.in_(user_ids))
+        .group_by(SavedPipeline.user_id)
+        .all()
+    ) if user_ids else {}
+
+    image_counts = dict(
+        db.query(UploadedImage.user_id, func.count(UploadedImage.id))
+        .filter(UploadedImage.user_id.in_(user_ids))
+        .group_by(UploadedImage.user_id)
+        .all()
+    ) if user_ids else {}
+
     return {
         "total": db.query(func.count(User.id)).scalar(),
-        "users": result_users
+        "users": [
+            {
+                "id": u.id,
+                "email": u.email,
+                "username": u.username,
+                "full_name": u.full_name,
+                "is_active": u.is_active,
+                "is_admin": u.is_admin,
+                "oauth_provider": u.oauth_provider,
+                "profile_picture": u.profile_picture,
+                "created_at": u.created_at.isoformat(),
+                "pipeline_count": pipeline_counts.get(u.id, 0),
+                "image_count": image_counts.get(u.id, 0)
+            }
+            for u in users
+        ]
     }
 
 
@@ -611,7 +627,17 @@ async def get_all_sessions_data(
 ):
     """Get all sessions data (requires PIN)"""
     sessions = db.query(DBSession).order_by(DBSession.created_at.desc()).offset(skip).limit(limit).all()
-    
+    session_ids = [s.id for s in sessions]
+
+    # Batch image counts to avoid N+1
+    image_counts = dict(
+        db.query(UploadedImage.session_id, func.count(UploadedImage.id))
+        .filter(UploadedImage.session_id.in_(session_ids))
+        .group_by(UploadedImage.session_id)
+        .all()
+    ) if session_ids else {}
+
+    now = datetime.now(timezone.utc)
     return {
         "total": db.query(func.count(DBSession.id)).scalar(),
         "sessions": [
@@ -622,8 +648,8 @@ async def get_all_sessions_data(
                 "created_at": s.created_at.isoformat(),
                 "last_active": s.last_active.isoformat(),
                 "expires_at": s.expires_at.isoformat(),
-                "is_expired": s.expires_at < datetime.now(timezone.utc),
-                "image_count": db.query(func.count(UploadedImage.id)).filter(UploadedImage.session_id == s.id).scalar()
+                "is_expired": ensure_aware(s.expires_at) < now,
+                "image_count": image_counts.get(s.id, 0)
             }
             for s in sessions
         ]

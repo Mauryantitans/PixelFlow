@@ -87,6 +87,29 @@ export const authService = {
     return response.data;
   },
 
+  // Silently exchange a refresh token for a new access + refresh token pair.
+  // Returns true on success, false if the refresh token is invalid/expired.
+  async refreshTokens(): Promise<boolean> {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return false;
+
+    try {
+      const formData = new FormData();
+      formData.append('refresh_token', refreshToken);
+
+      const response = await axios.post<AuthResponse>(
+        `${API_BASE_URL}/auth/refresh`,
+        formData,
+      );
+
+      this.setTokens(response.data.access_token, response.data.refresh_token);
+      return true;
+    } catch {
+      this.clearTokens();
+      return false;
+    }
+  },
+
   // Logout and cleanup user data
   async logout(sessionId: string) {
     const token = this.getAccessToken();
@@ -103,7 +126,6 @@ export const authService = {
           },
         });
         
-        console.log('Logout cleanup complete');
       } catch (error) {
         console.error('Logout cleanup error:', error);
         // Continue with client-side logout even if backend fails
@@ -224,23 +246,65 @@ export const pipelineService = {
   },
 };
 
-// Axios interceptor to handle auth errors
+// Track whether a refresh is already in-flight to avoid parallel refresh storms.
+let isRefreshing = false;
+let refreshQueue: Array<(token: string | null) => void> = [];
+
+function processQueue(newToken: string | null) {
+  refreshQueue.forEach((resolve) => resolve(newToken));
+  refreshQueue = [];
+}
+
+// Axios interceptor: on 401, attempt a silent refresh then retry the original
+// request once. If the refresh also fails, clear tokens and redirect to /auth.
 axios.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid - only clear and redirect if not on public pages
-      const isPublicPage = window.location.pathname === '/auth' || 
-                          window.location.pathname === '/login' ||
-                          window.location.pathname === '/register' ||
-                          window.location.pathname === '/' ||
-                          window.location.pathname === '/app';
-      
-      if (!isPublicPage) {
-        authService.clearTokens();
-        window.location.href = '/auth';
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Only attempt refresh on 401 responses that haven't already been retried,
+    // and only when we actually have a refresh token to try.
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retried &&
+      authService.getRefreshToken()
+    ) {
+      originalRequest._retried = true;
+
+      if (isRefreshing) {
+        // Another refresh is in-flight — queue this request until it resolves.
+        return new Promise((resolve, reject) => {
+          refreshQueue.push((token) => {
+            if (token) {
+              originalRequest.headers['Authorization'] = `Bearer ${token}`;
+              resolve(axios(originalRequest));
+            } else {
+              reject(error);
+            }
+          });
+        });
+      }
+
+      isRefreshing = true;
+      const success = await authService.refreshTokens();
+      isRefreshing = false;
+
+      if (success) {
+        const newToken = authService.getAccessToken();
+        processQueue(newToken);
+        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
+        return axios(originalRequest);
+      } else {
+        processQueue(null);
+        const isPublicPage = ['/', '/auth', '/login', '/register', '/app'].includes(
+          window.location.pathname
+        );
+        if (!isPublicPage) {
+          window.location.href = '/auth';
+        }
       }
     }
+
     return Promise.reject(error);
   }
 );

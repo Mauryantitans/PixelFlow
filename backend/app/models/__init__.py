@@ -18,9 +18,15 @@ class OperationParam(BaseModel):
     name: str
     value: Union[int, float, str, bool]
 
+# A parameter value may be a scalar, or a nested structure for richer input
+# types (e.g. a point {x, y}, a rect {x, y, w, h}, or a list of points).
+# Per-operation validation/coercion happens in app.processing.executor.
+ParamValue = Union[int, float, str, bool, None, List[Any], Dict[str, Any]]
+
+
 class PipelineStep(BaseModel):
-    name: str
-    params: Dict[str, Union[int, float, str, bool]] = Field(default_factory=dict)
+    name: str  # operation id or legacy display label (resolved via aliases)
+    params: Dict[str, ParamValue] = Field(default_factory=dict)
 
 class ProcessingTiming(BaseModel):
     step_name: str
@@ -43,6 +49,9 @@ class ProcessResponse(BaseModel):
     intermediate_results: Optional[List[List[str]]] = None
     total_time: float = 0.0
     step_timings: List[ProcessingTiming] = Field(default_factory=list)
+    # Per-image list of per-step errors (None where a step succeeded). Optional
+    # and additive — older clients ignore it.
+    step_errors: Optional[List[Any]] = None
     message: str = "Processing completed successfully"
 
 class LiveProcessResponse(BaseModel):
@@ -50,6 +59,8 @@ class LiveProcessResponse(BaseModel):
     results: List[str] = Field(default_factory=list)  # Base64 encoded images for each step
     total_time: float = 0.0
     step_timings: List[ProcessingTiming] = Field(default_factory=list)
+    # Per-step errors (None where the step succeeded), index-aligned with the pipeline.
+    step_errors: Optional[List[Optional[Dict[str, Any]]]] = None
     message: str = "Live processing completed successfully"
 
 class UploadResponse(BaseModel):

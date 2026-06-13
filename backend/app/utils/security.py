@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from app.models.db_models import LoginAttempt
 from app.core.security_config import LoginSecurity, SecurityLogging
@@ -19,7 +19,7 @@ def check_login_attempts(db: Session, email: str, ip_address: Optional[str] = No
     Returns:
         dict with keys: 'allowed' (bool), 'attempts_remaining' (int), 'locked_until' (datetime or None)
     """
-    cutoff_time = datetime.utcnow() - LOCKOUT_DURATION
+    cutoff_time = datetime.now(timezone.utc) - LOCKOUT_DURATION
     
     # Count recent failed attempts
     recent_attempts = db.query(LoginAttempt).filter(

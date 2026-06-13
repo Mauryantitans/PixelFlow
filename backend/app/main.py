@@ -126,22 +126,16 @@ async def root():
 async def health_check():
     """Health check endpoint with security status"""
     from .middleware.rate_limit import RateLimitMiddleware
-    from .middleware.security_headers import get_headers_info
-    from .core.security_config import RateLimiting, SecurityHeaders, LoginSecurity
+    from .core.security_config import RateLimiting, LoginSecurity
     
     return {
         "status": "healthy",
         "app": settings.APP_NAME,
         "version": settings.VERSION,
-        "cors_origins": settings.CORS_ORIGINS,  # DEBUG: Show configured origins
-        "cors_regex": settings.CORS_ORIGIN_REGEX if settings.CORS_ORIGIN_REGEX else None,
-        "sessions": session_manager.get_session_stats(),
         "security": {
             "rate_limiting": {
                 "enabled": RateLimiting.ENABLED,
-                "stats": RateLimitMiddleware.get_stats()
             },
-            "security_headers": get_headers_info(),
             "login_security": {
                 "max_attempts": LoginSecurity.MAX_ATTEMPTS,
                 "lockout_minutes": int(LoginSecurity.LOCKOUT_DURATION.total_seconds() / 60)

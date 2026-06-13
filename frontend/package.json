@@ -43,8 +43,10 @@
     ]
   },
   "devDependencies": {
+    "@types/jest": "^29.5.14",
     "@types/react-router-dom": "^5.3.3",
     "@types/uuid": "^9.0.0",
+    "prettier": "^3.8.4",
     "react-scripts": "^5.0.1",
     "uuid": "^9.0.0"
   },

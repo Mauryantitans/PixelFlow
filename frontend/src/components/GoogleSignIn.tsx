@@ -80,12 +80,9 @@ export const GoogleSignIn: React.FC<GoogleSignInProps> = ({ onSuccess, onError }
       if (result.data.success) {
         // Store token and user info
         const { access_token, user } = result.data;
-        
-        localStorage.setItem('token', access_token);
+
         setToken(access_token);
         setUser(user);
-
-        console.log('Google Sign-In successful:', user.email);
 
         if (onSuccess) {
           onSuccess();

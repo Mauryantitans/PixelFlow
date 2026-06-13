@@ -10,11 +10,10 @@ import {
   useKeyboardShortcuts
 } from './hooks';
 import { usePipelineContext } from './contexts/PipelineContext';
+import { useOperationSchema } from './contexts/OperationSchemaContext';
 import {
   ProcessedResult,
-  OPENCV_OPERATION_CONFIGS,
-  SCIKIT_OPERATION_CONFIGS,
-  ALL_OPERATION_CONFIGS
+  StepErrorDTO
 } from './types';
 import PipelineStepComponent from './components/PipelineStep';
 import ResultsGridComponent from './components/ResultsGrid';
@@ -64,6 +63,7 @@ const App: React.FC = () => {
   const {
     results: liveResults,
     timingData: liveTimingData,
+    stepErrors: liveStepErrors,
     processLive,
     clearResults: clearLiveResults
   } = useLiveProcessing();
@@ -88,6 +88,7 @@ const App: React.FC = () => {
   
   const galleryModal = useModal();
   const methodDetailsModal = useModal();
+  const { palette, allLabels, getOp, getDefaults } = useOperationSchema();
   const [selectedMethodName, setSelectedMethodName] = useState<string>('');
   
   // State for search functionality
@@ -119,30 +120,14 @@ const App: React.FC = () => {
   const [liveProcessingEnabled, setLiveProcessingEnabled] = useState(false);
   
   // Filter operations based on search - improved logic
-  const getFilteredOperations = () => {
+  const getFilteredOperations = (): Record<string, Record<string, string[]>> => {
     if (!operationSearch.trim()) {
-      return {
-        'Basic Operations': {
-          'Adjustments': ['Brightness', 'Contrast', 'Saturation', 'Exposure'],
-          'Filters': ['Grayscale', 'Sepia', 'Invert', 'Solarize', 'Posterize'],
-          'Blur & Sharpen': ['Sharpen', 'Gaussian Blur'],
-          'Effects': ['Vignette', 'Grain']
-        },
-        'OpenCV': OPENCV_OPERATION_CONFIGS,
-        'Scikit-Image': SCIKIT_OPERATION_CONFIGS
-      };
+      return palette;
     }
-    
+
     const searchTerm = operationSearch.toLowerCase();
-    const filteredOps: string[] = [];
-    
-    // Search in all operation configs
-    Object.keys(ALL_OPERATION_CONFIGS).forEach(op => {
-      if (op.toLowerCase().includes(searchTerm)) {
-        filteredOps.push(op);
-      }
-    });
-    
+    const filteredOps = allLabels.filter((label) => label.toLowerCase().includes(searchTerm));
+
     return {
       'Search Results': {
         'Found Operations': filteredOps
@@ -188,7 +173,6 @@ const App: React.FC = () => {
   
   // Enhanced live toggle with feedback - FIXED
   const handleLiveToggle = (enabled: boolean) => {
-    console.log('Live toggle clicked:', { enabled, selectedCount, pipelineLength: pipeline.length });
     
     if (enabled && selectedCount !== 1) {
       updateStatus('Live processing requires exactly one selected image', 'error');
@@ -203,11 +187,7 @@ const App: React.FC = () => {
       clearBatchResults();
       setSelectedResult(null);
       updateStatus('Live mode enabled - adjust parameters to see real-time changes', 'info', true);
-      
-      // Trigger initial processing if conditions are met
-      if (selectedImages.length === 1 && pipeline.length > 0) {
-        setTimeout(() => handleLiveProcess(), 100);
-      }
+      // Initial processing is handled by the live useEffect (fires when live mode turns on).
     } else {
       setCurrentView('grid');
       clearLiveResults();
@@ -219,11 +199,9 @@ const App: React.FC = () => {
   // Enhanced live processing with feedback
   const handleLiveProcess = async () => {
     if (selectedImages.length !== 1 || !liveProcessingEnabled) {
-      console.log('Live process skipped:', { selectedCount: selectedImages.length, liveEnabled: liveProcessingEnabled });
       return;
     }
     
-    console.log('Starting live process for image:', selectedImages[0].id);
     
     try {
       updateStatus('Processing live preview...', 'processing', true);
@@ -250,7 +228,6 @@ const App: React.FC = () => {
       return;
     }
     
-    console.log('Starting batch process for', selectedCount, 'images');
     
     try {
       setCurrentView('grid');
@@ -261,7 +238,6 @@ const App: React.FC = () => {
         (current, total, result) => {
           // Progress callback - update status
           updateStatus(`Processing image ${current} of ${total}...`, 'processing', true);
-          console.log(`Processed image ${current}/${total}:`, result.id);
         }
       );
       
@@ -288,33 +264,16 @@ const App: React.FC = () => {
   
   // Handle adding operation to pipeline
   const handleAddOperation = (operationName: string) => {
-    const config = ALL_OPERATION_CONFIGS[operationName];
-    const params: Record<string, any> = {};
-    
-    if (config && config.params) {
-      config.params.forEach(param => {
-        params[param.name] = param.default;
-      });
-    }
-    
-    console.log('Adding operation:', operationName, 'with params:', params);
+    // Seed default params from the operation schema (single source of truth).
+    const params = getDefaults(operationName);
     addStep(operationName, params);
-    
-    // Trigger live processing if enabled
-    if (liveProcessingEnabled && selectedImages.length === 1) {
-      setTimeout(() => handleLiveProcess(), 200);
-    }
+    // Live re-processing is driven by the live useEffect (single trigger).
   };
   
   // Handle parameter changes
   const handleParameterChange = (stepId: string, paramName: string, value: any) => {
-    console.log('Parameter changed:', { stepId, paramName, value });
     updateStepParam(stepId, paramName, value);
-    
-    // Trigger live processing if enabled
-    if (liveProcessingEnabled && selectedImages.length === 1) {
-      setTimeout(() => handleLiveProcess(), 200);
-    }
+    // Live re-processing is driven by the live useEffect (single trigger).
   };
 
   // Show method details in modal
@@ -323,41 +282,19 @@ const App: React.FC = () => {
     methodDetailsModal.openModal();
   };
   
-  // Handle result selection in batch mode - FIXED
+  // Handle result selection in batch mode
   const handleResultSelect = (result: ProcessedResult) => {
-    console.log('handleResultSelect called with:', result);
-    
     const originalImage = selectedImages.find(img => img.id === result.id);
-    console.log('Found original image:', {
-      found: !!originalImage,
-      filename: originalImage?.filename,
-      hasThumbnail: !!originalImage?.thumbnailDataUrl,
-      hasFullImage: !!originalImage?.dataUrl,
-      fullImageSize: originalImage?.dataUrl?.length || 0,
-      thumbnailSize: originalImage?.thumbnailDataUrl?.length || 0
-    });
-    
-    // Create proper result object with original URL
     const resultWithOriginal: ProcessedResult = {
       ...result,
       originalUrl: originalImage?.dataUrl || originalImage?.thumbnailDataUrl || ''
     };
-    
-    console.log('Setting selectedResult:', resultWithOriginal);
     setSelectedResult(resultWithOriginal);
     setCurrentView('inspector');
   };
 
   const handleImageView = (imageIndex: number) => {
     const image = images[imageIndex];
-    console.log('Opening lightbox for image:', {
-      filename: image.filename,
-      hasThumbnail: !!image.thumbnailDataUrl,
-      hasFullImage: !!image.dataUrl,
-      fullImageSize: image.dataUrl?.length || 0,
-      thumbnailSize: image.thumbnailDataUrl?.length || 0
-    });
-    
     setLightboxState({
       isOpen: true,
       imageUrl: image.dataUrl || image.thumbnailDataUrl || '',
@@ -417,25 +354,31 @@ const App: React.FC = () => {
     }
   }, [liveProcessingEnabled, images.length, selectedCount, pipeline.length, updateStatus, status.persistent]);
   
-  // Auto-trigger live processing when pipeline changes - IMPROVED
+  // Single source of truth for live re-processing: fires whenever the pipeline,
+  // selection, or live-mode toggle changes. `processLive` is debounced (and now
+  // stable), so rapid edits coalesce. The status is set here so "Live preview
+  // updated" only appears after the result is computed and the image decoded.
   useEffect(() => {
-    if (liveProcessingEnabled && selectedImages.length === 1 && pipeline.length > 0) {
-      console.log('Pipeline changed, triggering live process');
-      const timeoutId = setTimeout(() => {
-        // Inline the live process logic to avoid dependency issues
-        if (selectedImages.length === 1 && liveProcessingEnabled) {
-          processLive(selectedImages[0].id, pipeline);
-        }
-      }, 300); // Reduced debounce
-      
-      return () => clearTimeout(timeoutId);
+    if (!liveProcessingEnabled || selectedImages.length !== 1 || pipeline.length === 0) {
+      return;
     }
-  }, [pipeline, liveProcessingEnabled, selectedImages, processLive]);
+    let cancelled = false;
+    updateStatus('Processing live preview...', 'processing', true);
+    processLive(selectedImages[0].id, pipeline)
+      .then(() => {
+        if (!cancelled) updateStatus('Live preview updated', 'success');
+      })
+      .catch((error: any) => {
+        if (!cancelled) updateStatus(`Live processing failed: ${error?.message ?? error}`, 'error');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pipeline, liveProcessingEnabled, selectedImages, processLive, updateStatus]);
 
   // Update live processing toggle state when selection changes - FIXED
   useEffect(() => {
     if (selectedCount !== 1 && liveProcessingEnabled) {
-      console.log('Disabling live processing - selection changed to:', selectedCount);
       setLiveProcessingEnabled(false);
       setLiveProcessing(false);
       setCurrentView('grid');
@@ -631,9 +574,9 @@ const App: React.FC = () => {
                                   className="operation-btn-enhanced group"
                                 >
                                   {op}
-                                  {ALL_OPERATION_CONFIGS[op]?.description && (
+                                  {getOp(op)?.description && (
                                     <div className="operation-tooltip">
-                                      {ALL_OPERATION_CONFIGS[op].description}
+                                      {getOp(op)?.description}
                                     </div>
                                   )}
                                 </button>
@@ -832,6 +775,7 @@ const App: React.FC = () => {
                       }}
                       isViewing={ui.viewingStepIndex === index}
                       stepTiming={stepTiming}
+                      stepError={liveProcessingEnabled ? (liveStepErrors?.[index] ?? null) : null}
                       onShowDetails={() => handleShowMethodDetails(step.name)}
                     />
                   );
@@ -977,7 +921,7 @@ const App: React.FC = () => {
       <MethodDetailsModal
         isOpen={methodDetailsModal.isOpen}
         operationName={selectedMethodName}
-        config={ALL_OPERATION_CONFIGS[selectedMethodName]}
+        config={getOp(selectedMethodName) ?? null}
         onClose={methodDetailsModal.closeModal}
       />
       

@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
+import hashlib
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
@@ -9,7 +10,7 @@ import logging
 
 from ..core.config import settings
 from ..core.database import get_db
-from ..models.db_models import User
+from ..models.db_models import User, RefreshToken
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,9 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """Create a JWT access token"""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
     to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -43,7 +44,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 def create_refresh_token(data: dict) -> str:
     """Create a JWT refresh token"""
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
@@ -136,9 +137,91 @@ def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
     user = db.query(User).filter(User.email == email).first()
     if not user:
         return None
+    # OAuth-only users have no password hash — reject password login attempts
+    if not user.hashed_password:
+        logger.warning(f"Password login attempt for OAuth-only account: {email}")
+        return None
     if not verify_password(password, user.hashed_password):
         return None
     return user
+
+
+def _hash_token(token: str) -> str:
+    """SHA-256 hash a token string for safe DB storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def store_refresh_token(db: Session, user_id: int, token: str) -> None:
+    """Persist a hashed refresh token so it can be revoked later."""
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    db.add(RefreshToken(
+        user_id=user_id,
+        token_hash=_hash_token(token),
+        expires_at=expire,
+    ))
+    db.commit()
+
+
+def verify_and_rotate_refresh_token(
+    db: Session, raw_token: str
+) -> tuple[User, str, str]:
+    """
+    Validate a refresh token against the DB, then rotate it.
+
+    Returns (user, new_access_token, new_refresh_token).
+    Raises HTTP 401 on any failure so the caller can propagate it directly.
+    """
+    credentials_error = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired refresh token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    # 1. Decode the JWT (validates signature + expiry)
+    try:
+        payload = jwt.decode(raw_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id_str = payload.get("sub")
+        token_type = payload.get("type")
+        if not user_id_str or token_type != "refresh":
+            raise credentials_error
+        user_id = int(user_id_str)
+    except (JWTError, ValueError):
+        raise credentials_error
+
+    # 2. Check the hash exists in DB (not revoked / not rotated away)
+    token_hash = _hash_token(raw_token)
+    db_token = db.query(RefreshToken).filter(
+        RefreshToken.token_hash == token_hash,
+        RefreshToken.user_id == user_id,
+    ).first()
+    if not db_token:
+        raise credentials_error
+
+    # 3. Look up the user
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user:
+        raise credentials_error
+
+    # 4. Rotate — delete old token, issue new pair
+    db.delete(db_token)
+    new_access = create_access_token(data={"sub": str(user_id)})
+    new_refresh = create_refresh_token(data={"sub": str(user_id)})
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    db.add(RefreshToken(
+        user_id=user_id,
+        token_hash=_hash_token(new_refresh),
+        expires_at=expire,
+    ))
+    db.commit()
+
+    return user, new_access, new_refresh
+
+
+def revoke_user_refresh_tokens(db: Session, user_id: int) -> int:
+    """Delete all stored refresh tokens for a user (called on logout)."""
+    deleted = db.query(RefreshToken).filter(RefreshToken.user_id == user_id).delete()
+    db.commit()
+    return deleted
 
 
 async def get_current_user_optional(

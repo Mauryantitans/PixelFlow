@@ -1,6 +1,8 @@
 import React from 'react';
 import * as LucideReact from 'lucide-react';
-import { PipelineStep, ALL_OPERATION_CONFIGS } from '../types';
+import { PipelineStep, StepErrorDTO } from '../types';
+import { useOperationSchema } from '../contexts/OperationSchemaContext';
+import ParamControl from './params/ParamControl';
 
 interface PipelineStepProps {
   step: PipelineStep;
@@ -12,7 +14,8 @@ interface PipelineStepProps {
   onPreview: () => void;
   isViewing: boolean;
   stepTiming?: { duration: number; isAverage?: boolean };
-  onShowDetails: () => void; // Add this
+  onShowDetails: () => void;
+  stepError?: StepErrorDTO | null;
 }
 
 const PipelineStepComponent: React.FC<PipelineStepProps> = ({
@@ -25,9 +28,11 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
   onPreview,
   isViewing,
   stepTiming,
-  onShowDetails // Add this
+  onShowDetails,
+  stepError
 }) => {
-  const config = ALL_OPERATION_CONFIGS[step.name];
+  const { getOp } = useOperationSchema();
+  const op = getOp(step.name);
 
   const handleMoveUp = () => {
     if (index > 0) onMove(index, index - 1);
@@ -35,47 +40,6 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
 
   const handleMoveDown = () => {
     if (index < totalSteps - 1) onMove(index, index + 1);
-  };
-
-  const renderParameterControl = (param: any) => {
-    const value = step.params[param.name];
-
-    switch (param.type) {
-      case 'slider':
-        return (
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min={param.min}
-              max={param.max}
-              value={Number(value)}
-              onChange={(e) => onParameterChange(step.id, param.name, parseInt(e.target.value))}
-              className="param-slider flex-1"
-            />
-            <span className="text-sm font-mono text-gray-600 dark:text-gray-300 w-12 text-right">
-              {Number(value) > 0 ? `+${value}` : String(value)}
-            </span>
-          </div>
-        );
-      
-      case 'select':
-        return (
-          <select
-            value={String(value)}
-            onChange={(e) => onParameterChange(step.id, param.name, e.target.value)}
-            className="param-select"
-          >
-            {param.options?.map((option: string) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        );
-      
-      default:
-        return null;
-    }
   };
 
   return (
@@ -103,7 +67,7 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
         <div className="flex justify-between items-center mb-2">
           <div className="flex items-center gap-2">
             <h4 className="font-semibold text-zinc-900 dark:text-white">
-              {step.name}
+              {op?.label ?? step.name}
             </h4>
               {/* Info Button */}
                 <button
@@ -126,17 +90,29 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
           </div>
         </div>
 
-        {/* Parameters */}
-        {config && config.params.length > 0 && (
+        {/* Parameters (rendered dynamically from the operation schema) */}
+        {op && op.params.length > 0 && (
           <div className="space-y-2">
-            {config.params.map((param) => (
+            {op.params.map((param) => (
               <div key={param.name}>
                 <label className="text-xs text-gray-500 dark:text-gray-400 block mb-1">
-                  {param.name}
+                  {param.label}
                 </label>
-                {renderParameterControl(param)}
+                <ParamControl
+                  spec={param}
+                  value={step.params[param.name]}
+                  onChange={(v) => onParameterChange(step.id, param.name, v)}
+                />
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Per-step error (validation / execution) surfaced from the backend */}
+        {stepError && (
+          <div className="mt-2 flex items-start gap-1.5 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-2 py-1.5">
+            <LucideReact.AlertTriangle className="w-3.5 h-3.5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+            <span className="text-xs text-red-700 dark:text-red-300">{stepError.message}</span>
           </div>
         )}
       </div>

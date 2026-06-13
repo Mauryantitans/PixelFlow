@@ -88,13 +88,28 @@ def check_storage_quota(
     
     # Get current usage
     current_usage = get_user_current_storage(db, user_id, session_id)
-    
+
     # Calculate after upload
     after_upload = current_usage + new_file_size
-    
+
+    # A quota of 0 (or less) means no storage is allowed for this user type.
+    # Guard against division by zero and reject the upload.
+    if quota_bytes <= 0:
+        return {
+            'allowed': False,
+            'current_mb': round(current_usage / (1024 * 1024), 2),
+            'quota_mb': 0,
+            'new_file_mb': round(new_file_size / (1024 * 1024), 2),
+            'after_upload_mb': round(after_upload / (1024 * 1024), 2),
+            'percentage_used': 100.0,
+            'remaining_mb': 0,
+            'warning': True,
+            'unlimited': False
+        }
+
     # Check if allowed
     allowed = after_upload <= quota_bytes
-    
+
     # Calculate percentages
     percentage_used = (after_upload / quota_bytes) * 100
     warning = percentage_used >= settings.warn_at_percentage
@@ -141,11 +156,14 @@ def get_user_storage_stats(db: Session, user_id: Optional[int], session_id: str,
             UploadedImage.session_id == session_id
         ).scalar() or 0
     
+    unlimited = quota_bytes == float('inf')
+    has_quota = not unlimited and quota_bytes > 0
+
     return {
         'used_mb': round(current_usage / (1024 * 1024), 2),
-        'quota_mb': round(quota_bytes / (1024 * 1024), 2) if quota_bytes != float('inf') else None,
-        'percentage_used': round((current_usage / quota_bytes) * 100, 1) if quota_bytes != float('inf') else 0,
-        'remaining_mb': round((quota_bytes - current_usage) / (1024 * 1024), 2) if quota_bytes != float('inf') else None,
+        'quota_mb': round(quota_bytes / (1024 * 1024), 2) if not unlimited else None,
+        'percentage_used': round((current_usage / quota_bytes) * 100, 1) if has_quota else (0 if unlimited else 100.0),
+        'remaining_mb': round((quota_bytes - current_usage) / (1024 * 1024), 2) if has_quota else (None if unlimited else 0),
         'image_count': image_count,
-        'unlimited': quota_bytes == float('inf')
+        'unlimited': unlimited
     }

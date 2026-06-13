@@ -224,17 +224,28 @@ async def process_live(request: LiveProcessRequest):
 
 @router.get("/operations")
 async def get_available_operations():
-    """Get list of available image processing operations"""
+    """Get available operations with full, typed parameter schemas (see the
+    database router for details). Kept in sync so both storage modes behave the
+    same."""
     try:
-        # Return the complete operations list from the ImageProcessor
-        operations_list = list(ImageProcessor.OPERATIONS.keys())
-        
+        from ...processing.registry import registry
+
+        schema = registry.to_schema()
+        legacy_labels = [
+            op["label"]
+            for cat in schema["categories"]
+            for sub in cat["subcategories"]
+            for op in sub["operations"]
+        ]
+
         return JSONResponse(content={
             "success": True,
-            "operations": operations_list,
-            "total_count": len(operations_list)
+            "version": schema["version"],
+            "categories": schema["categories"],
+            "operations": legacy_labels,
+            "total_count": len(legacy_labels),
         })
-        
+
     except Exception as e:
         logger.error(f"Error getting operations: {e}")
         raise HTTPException(status_code=500, detail="Failed to get available operations")

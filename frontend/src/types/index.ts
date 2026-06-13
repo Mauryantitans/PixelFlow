@@ -38,6 +38,65 @@ export interface OperationConfig {
   params: OperationParam[];
 }
 
+// ---- Dynamic operation schema (GET /processing/operations, Phase 2/3) ----
+// The backend registry is the single source of truth; the frontend renders
+// controls from these DTOs rather than the static *_OPERATION_CONFIGS above.
+export type ParamType =
+  | 'int'
+  | 'float'
+  | 'odd_kernel'
+  | 'angle'
+  | 'enum'
+  | 'bool'
+  | 'color'
+  | 'point'
+  | 'points'
+  | 'rect';
+
+export interface ParamSpecDTO {
+  name: string;
+  label: string;
+  type: ParamType;
+  default: any;
+  help?: string;
+  advanced?: boolean;
+  // numeric (int / float / odd_kernel / angle)
+  min?: number;
+  max?: number;
+  step?: number;
+  // enum
+  options?: Array<{ value: string; label: string }>;
+  // coordinate (point / points / rect)
+  space?: 'normalized' | 'pixel';
+  min_points?: number;
+  max_points?: number | null;
+}
+
+export interface OperationSpecDTO {
+  id: string;
+  label: string;
+  category: string;
+  subcategory: string | null;
+  description: string;
+  interactive: boolean;
+  params: ParamSpecDTO[];
+}
+
+export interface OperationSchema {
+  version: string;
+  categories: Array<{
+    name: string;
+    subcategories: Array<{ name: string | null; operations: OperationSpecDTO[] }>;
+  }>;
+}
+
+export interface StepErrorDTO {
+  op: string;
+  kind: string;
+  message: string;
+  param_errors: Array<{ param: string; message: string }>;
+}
+
 export interface ProcessingTiming {
   step_name: string;
   duration: number; // in seconds
@@ -69,6 +128,7 @@ export interface ProcessResponse {
   intermediate_results?: string[][];
   total_time: number;
   step_timings: ProcessingTiming[];
+  step_errors?: Array<Array<StepErrorDTO | null> | null> | null;
   message: string;
 }
 
@@ -77,6 +137,7 @@ export interface LiveProcessResponse {
   results: string[];
   total_time: number;
   step_timings: ProcessingTiming[];
+  step_errors?: Array<StepErrorDTO | null> | null;
   message: string;
 }
 

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Header, Request, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Form
 from sqlalchemy.orm import Session
 from datetime import timedelta
 import logging
@@ -15,7 +15,9 @@ from ...models.schemas import (
 from ...utils.auth import (
     get_password_hash, authenticate_user,
     create_access_token, create_refresh_token,
-    get_current_user, get_current_active_admin
+    get_current_user, get_current_active_admin,
+    store_refresh_token, verify_and_rotate_refresh_token,
+    revoke_user_refresh_tokens,
 )
 from ...utils.security import (
     check_login_attempts, log_login_attempt, clear_login_attempts
@@ -130,10 +132,11 @@ async def login(
     clear_login_attempts(db, login_data.email)
     log_login_attempt(db, user.email, True, ip_address, user_agent)
     
-    # Create tokens
+    # Create tokens and persist the refresh token so it can be revoked later
     access_token = create_access_token(data={"sub": str(user.id)})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
-    
+    store_refresh_token(db, user.id, refresh_token)
+
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -195,6 +198,26 @@ async def delete_current_user(
     return None
 
 
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(
+    refresh_token: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Exchange a valid refresh token for a new access + refresh token pair.
+
+    The old refresh token is deleted on success (token rotation), so each
+    refresh token can only be used once.  Stolen tokens are therefore
+    automatically invalidated the next time the legitimate client refreshes.
+    """
+    user, new_access, new_refresh = verify_and_rotate_refresh_token(db, refresh_token)
+    return {
+        "access_token": new_access,
+        "refresh_token": new_refresh,
+        "token_type": "bearer",
+    }
+
+
 @router.post("/logout")
 async def logout(
     current_user: User = Depends(get_current_user),
@@ -203,12 +226,24 @@ async def logout(
 ):
     """Logout and cleanup user data (except saved pipelines)"""
     from ...models.db_models import Session as DBSession, UploadedImage, ProcessedImage
-    from ...core.business_rules import CleanupTriggers
-    
+    from ...utils.settings_manager import get_settings
+
     logger.info(f"User logout: {current_user.email}")
-    
-    # Get cleanup policy
-    policy = CleanupTriggers.ON_LOGOUT
+
+    # Revoke all persisted refresh tokens so stolen tokens can no longer be used
+    revoked = revoke_user_refresh_tokens(db, current_user.id)
+    logger.info(f"Revoked {revoked} refresh token(s) for {current_user.email}")
+
+    # Cleanup policy is driven by the editable admin setting `cleanup_on_logout`.
+    # When enabled we discard regenerable processed results but keep the user's
+    # uploads, session, and saved pipelines; when disabled we keep everything.
+    cleanup_on_logout = get_settings(db).cleanup_on_logout
+    policy = {
+        "delete_session": False,
+        "delete_uploads": False,
+        "delete_processed": bool(cleanup_on_logout),
+        "keep_pipelines": True,
+    }
     
     items_deleted = {
         "sessions": 0,
@@ -258,129 +293,4 @@ async def logout(
         "pipelines_kept": True
     }
 
-# DEBUG ENDPOINTS
-from fastapi import Header
-from ...utils.auth import decode_token
-import logging
-
-logger = logging.getLogger(__name__)
-
-@router.get("/debug/token")
-async def debug_token(authorization: str = Header(None)):
-    """Debug endpoint to check token format"""
-    if not authorization:
-        return {"error": "No Authorization header"}
-    
-    logger.info(f"Authorization header: {authorization}")
-    
-    # Check if it starts with Bearer
-    if not authorization.startswith("Bearer "):
-        return {
-            "error": "Authorization header doesn't start with 'Bearer '",
-            "received": authorization[:50]
-        }
-    
-    # Extract token
-    token = authorization.replace("Bearer ", "")
-    logger.info(f"Token extracted: {token[:50]}...")
-    
-    try:
-        payload = decode_token(token)
-        return {
-            "success": True,
-            "token_length": len(token),
-            "payload": payload,
-            "user_id": payload.get("sub"),
-            "token_type": payload.get("type")
-        }
-    except Exception as e:
-        logger.error(f"Token decode error: {e}")
-        return {
-            "error": str(e),
-            "token_preview": token[:50]
-        }
-
-@router.get("/me-simple", response_model=UserResponse)
-async def get_current_user_simple(authorization: str = Header(None), db: Session = Depends(get_db)):
-    """Alternative /me endpoint using simple header (for debugging)"""
-    logger.info(f"me-simple called with authorization: {authorization[:50] if authorization else 'None'}...")
-    
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No Authorization header"
-        )
-    
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Authorization header format"
-        )
-    
-    token = authorization.replace("Bearer ", "")
-    
-    try:
-        payload = decode_token(token)
-        user_id_str = payload.get("sub")
-        token_type = payload.get("type")
-        
-        # Convert user_id from string to int
-        try:
-            user_id = int(user_id_str) if user_id_str else None
-        except (ValueError, TypeError):
-            user_id = None
-        
-        logger.info(f"Token decoded - user_id: {user_id}, type: {token_type}")
-        
-        if not user_id or token_type != "access":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
-        
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="User not found"
-            )
-        
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Inactive user"
-            )
-        
-        logger.info(f"User authenticated: {user.email}")
-        return user
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in me-simple: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials"
-        )
-
-@router.get("/debug/pipelines")
-async def debug_user_pipelines(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Debug endpoint to see raw pipeline data from database"""
-    from ...models.db_models import SavedPipeline
-    
-    pipelines = db.query(SavedPipeline).filter(SavedPipeline.user_id == current_user.id).all()
-    
-    return {
-        "user_id": current_user.id,
-        "pipeline_count": len(pipelines),
-        "pipelines": [
-            {
-                "id": p.id,
-                "name": p.name,
-                "pipeline_data": p.pipeline_data,
-                "pipeline_data_type": str(type(p.pipeline_data)),
-                "is_array": isinstance(p.pipeline_data, list)
-            }
-            for p in pipelines
-        ]
-    }
+# Debug endpoints have been intentionally removed for production security.

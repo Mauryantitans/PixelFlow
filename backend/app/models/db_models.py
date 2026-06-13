@@ -4,6 +4,20 @@ from sqlalchemy.sql import func
 from datetime import datetime
 from ..core.database import Base
 
+
+class RefreshToken(Base):
+    """Persisted refresh tokens — enables server-side revocation on logout."""
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    # Store a SHA-256 hash, not the raw token, so a DB breach can't reuse tokens.
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User")
+
 class User(Base):
     """User account model"""
     __tablename__ = "users"
