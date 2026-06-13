@@ -72,15 +72,18 @@ def load_image_from_db_or_filesystem(image_id: str, session_id: str, db: Session
 
 
 async def process_single_image_pipeline(
-    image: PILImage.Image, 
-    pipeline: List[dict], 
-    session_id: str, 
-    save_intermediates: bool = False
+    image: PILImage.Image,
+    pipeline: List[dict],
+    session_id: str,
+    save_intermediates: bool = False,
+    source_key: str | None = None,
 ) -> dict:
     """Process a PIL Image through the pipeline with timing"""
     try:
-        # Process the image with timing
-        processing_result = ImageProcessor.apply_pipeline_with_timing_from_image(image, pipeline)
+        # Process the image with timing (prefix-cached when source_key is given)
+        processing_result = ImageProcessor.apply_pipeline_with_timing_from_image(
+            image, pipeline, source_key=source_key
+        )
         
         result = {
             "final_result": ImageProcessor.image_to_base64(processing_result.final_image),
@@ -144,10 +147,11 @@ async def process_images(request: ProcessRequest, db: Session = Depends(get_db))
                 
                 # Process the image
                 result = await process_single_image_pipeline(
-                    image, 
-                    [step.dict() for step in request.pipeline], 
+                    image,
+                    [step.dict() for step in request.pipeline],
                     request.session_id,
-                    save_intermediates=True
+                    save_intermediates=True,
+                    source_key=f"{request.session_id}|{image_id}",
                 )
                 
                 processed_results.append(result["final_result"])
@@ -211,12 +215,13 @@ async def process_live(request: LiveProcessRequest, db: Session = Depends(get_db
         # Load image from database or filesystem
         image = load_image_from_db_or_filesystem(request.image_id, request.session_id, db)
         
-        # Process with intermediate results and timing
+        # Process with intermediate results and timing (prefix-cached)
         result = await process_single_image_pipeline(
-            image, 
-            [step.dict() for step in request.pipeline], 
+            image,
+            [step.dict() for step in request.pipeline],
             request.session_id,
-            save_intermediates=True
+            save_intermediates=True,
+            source_key=f"{request.session_id}|{request.image_id}",
         )
         
         # Prepare results - all intermediate steps plus final

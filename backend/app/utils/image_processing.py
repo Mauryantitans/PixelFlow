@@ -22,6 +22,9 @@ class ProcessingResult:
         # Per-step error (None when the step succeeded). Index-aligned with the
         # pipeline; surfaced to the API in a later phase.
         self.step_errors: List[Any] = []
+        # How many leading steps were served from the prefix cache (recompute
+        # started after this many). 0 when caching is disabled or a full miss.
+        self.cached_prefix_len: int = 0
 
 class ImageProcessor:
     """Handles all image processing operations"""
@@ -1013,30 +1016,83 @@ class ImageProcessor:
             raise ValueError(f"Pipeline processing failed: {e}")
     
     @classmethod
-    def apply_pipeline_with_timing_from_image(cls, image: Image.Image, pipeline: List[Dict[str, Any]]) -> ProcessingResult:
-        """Apply a complete pipeline to a PIL Image with detailed timing information"""
+    def apply_pipeline_with_timing_from_image(
+        cls,
+        image: Image.Image,
+        pipeline: List[Dict[str, Any]],
+        source_key: Optional[str] = None,
+    ) -> ProcessingResult:
+        """Apply a pipeline to a PIL Image with timing.
+
+        When ``source_key`` is provided, intermediate outputs are cached by
+        cumulative prefix hash so that an edit to step k reuses the cached
+        outputs of steps 0..k-1 and only recomputes k..n (incremental preview).
+        Without ``source_key`` it recomputes every step (no caching).
+        """
         from app.processing.executor import execute_step
+        from app.processing.preview_cache import cache as preview_cache, prefix_hashes
 
         result = ProcessingResult()
         pipeline_start_time = time.perf_counter()
 
         try:
+            n = len(pipeline)
+            hashes = prefix_hashes(source_key, pipeline) if source_key else None
+            intermediates: List[Optional[Image.Image]] = [None] * n
             current_image = image.copy()
+            cached_len = 0
 
-            for step_index, step in enumerate(pipeline):
+            # Find the longest cached prefix and restore all its intermediates.
+            if hashes:
+                lc = -1
+                restored = None
+                for k in range(n - 1, -1, -1):
+                    img = preview_cache.get(hashes[k])
+                    if img is not None:
+                        lc, restored = k, img
+                        break
+                if lc >= 0:
+                    ok = True
+                    for i in range(lc):
+                        ci = preview_cache.get(hashes[i])
+                        if ci is None:
+                            ok = False
+                            break
+                        intermediates[i] = ci
+                    if ok:
+                        intermediates[lc] = restored
+                        current_image = restored.copy()
+                        cached_len = lc + 1
+                    else:
+                        current_image = image.copy()  # inconsistent cache → full recompute
+
+            result.cached_prefix_len = cached_len
+
+            # Record the cached (reused) leading steps — no recompute.
+            for i in range(cached_len):
+                step = pipeline[i]
+                result.intermediate_images.append(intermediates[i])
+                result.step_times.append(0.0)
+                result.step_errors.append(None)
+                result.step_details.append({
+                    'name': step.get('name'),
+                    'params': step.get('params', {}),
+                    'duration': 0.0,
+                    'step_index': i,
+                })
+
+            # Recompute from the first changed step onward.
+            for i in range(cached_len, n):
+                step = pipeline[i]
                 operation_name = step.get('name')
                 params = step.get('params', {})
 
-                # Time individual operation
                 step_start_time = time.perf_counter()
                 processed_image, step_error = execute_step(
                     current_image, {"name": operation_name, "params": params}
                 )
-                step_end_time = time.perf_counter()
+                step_duration = time.perf_counter() - step_start_time
 
-                step_duration = step_end_time - step_start_time
-
-                # Store results
                 current_image = processed_image
                 result.intermediate_images.append(current_image.copy())
                 result.step_times.append(step_duration)
@@ -1045,15 +1101,15 @@ class ImageProcessor:
                     'name': operation_name,
                     'params': params,
                     'duration': step_duration,
-                    'step_index': step_index
+                    'step_index': i,
                 })
-            
-            pipeline_end_time = time.perf_counter()
+                if hashes:
+                    preview_cache.put(hashes[i], current_image)
+
             result.final_image = current_image
-            result.total_time = pipeline_end_time - pipeline_start_time
-            
+            result.total_time = time.perf_counter() - pipeline_start_time
             return result
-            
+
         except Exception as e:
             logger.error(f"Error applying pipeline from image: {e}")
             raise ValueError(f"Pipeline processing failed: {e}")

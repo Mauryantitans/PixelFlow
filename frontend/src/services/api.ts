@@ -102,11 +102,22 @@ export class ApiService {
   /**
    * Process single image with live updates
    */
-  static async processLive(request: LiveProcessRequest): Promise<LiveProcessResponse> {
+  static async processLive(
+    request: LiveProcessRequest,
+    signal?: AbortSignal
+  ): Promise<LiveProcessResponse> {
     try {
-      const response: AxiosResponse<LiveProcessResponse> = await api.post('/processing/process-live', request);
+      const response: AxiosResponse<LiveProcessResponse> = await api.post(
+        '/processing/process-live',
+        request,
+        { signal }
+      );
       return response.data;
     } catch (error: any) {
+      // Let cancellations propagate raw so the caller can ignore them quietly.
+      if (error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError' || error?.name === 'AbortError') {
+        throw error;
+      }
       console.error('Live process error:', error);
       throw this.handleError(error);
     }

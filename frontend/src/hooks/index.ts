@@ -450,7 +450,7 @@ export function useLiveProcessing() {
         image_id: imageId,
         pipeline: pipeline.map(step => ({ name: step.name, params: step.params })),
         session_id: sessionId
-      });
+      }, abortControllerRef.current.signal);
       
       if (response.success) {
         // Decode the final image before committing results so the new preview
@@ -476,7 +476,10 @@ export function useLiveProcessing() {
         throw new Error(response.message);
       }
     } catch (error: any) {
-      if (error.name === 'AbortError') return [];
+      // A superseded request was cancelled — ignore quietly (latest wins).
+      if (error?.name === 'AbortError' || error?.name === 'CanceledError' || error?.code === 'ERR_CANCELED') {
+        return [];
+      }
       throw error;
     } finally {
       setLoading(false);
