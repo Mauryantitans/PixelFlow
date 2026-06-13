@@ -94,16 +94,15 @@ Click **"Advanced"** → **"Add Environment Variable"**
 ```
 DEBUG = False
 APP_NAME = PixelFlow
-VERSION = 1.0.0
+VERSION = 1.2.0
 HOST = 0.0.0.0
 PORT = 10000
-IMAGE_STORAGE = database
 USE_SQLITE = False
 DATABASE_URL = <PASTE_YOUR_DATABASE_URL_HERE>
 SECRET_KEY = <GENERATE_NEW_KEY>
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
-CORS_ORIGINS = http://localhost:3000
+ALLOWED_ORIGINS = http://localhost:3000
 ```
 
 **Generate SECRET_KEY:**
@@ -288,7 +287,7 @@ Your PixelFlow application is now live! 🎉
 **Solution**: Check Render logs for errors, verify DATABASE_URL is correct
 
 ### Issue: Images Not Persisting
-**Solution**: Verify IMAGE_STORAGE=database and database initialized
+**Solution**: Verify DATABASE_URL is set and the database is initialized (images are always stored in the database)
 
 ### Issue: Slow First Load
 **Solution**: Free tier spins down after 15min. First request takes ~30s (normal)

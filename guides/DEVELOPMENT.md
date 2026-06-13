@@ -246,8 +246,8 @@ python -c "
 from app.utils.image_processing import ImageProcessor
 from PIL import Image
 img = Image.open('test.jpg')
-processor = ImageProcessor(img)
-result = processor.apply_operation('Brightness', {'amount': 20})
+# apply_operation is a classmethod: (image, operation_name, params)
+result = ImageProcessor.apply_operation(img, 'Brightness', {'amount': 20})
 result.save('output.jpg')
 print('Success!')
 "

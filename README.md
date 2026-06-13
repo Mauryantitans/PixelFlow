@@ -2,7 +2,7 @@
 
 ## Visual Image Processing Pipeline Builder
 
-**Version 1.1.0** | [V1.0.0 on GitHub](https://github.com/Mauryantitans/PixelFlow/tree/v1.0.0) | [Changelog](CHANGELOG.md)
+**Version 1.2.0** | [V1.0.0 on GitHub](https://github.com/Mauryantitans/PixelFlow/tree/v1.0.0) | [Changelog](CHANGELOG.md)
 
 ---
 
@@ -60,17 +60,20 @@ admin features locally, create your own admin account — see [Quick Start](#-qu
 
 ---
 
-## 🆕 What's New in V1.1.0
+## 🆕 What's New in 1.2.0 — Dynamic Pipeline Engine
 
 **Major Features:**
-- ✅ **PostgreSQL Database** - Full data persistence with SQLAlchemy
-- ✅ **User Authentication** - JWT-based login with Google OAuth support
-- ✅ **Admin Panel** - User management, statistics, and database tools
-- ✅ **Session Management** - Heartbeat-based tracking and auto-cleanup
-- ✅ **Pipeline Saving** - Save and load your processing pipelines
-- ✅ **Enhanced Security** - Rate limiting, security headers, and PIN protection
+- ✅ **Schema-driven operation registry** - operations are declared once in the backend; the UI renders every control dynamically from the API (no duplicated frontend configs)
+- ✅ **77 operations** - up from ~53, including fixed Watershed/Denoise Wavelet and ~22 new stylize/photo/segmentation techniques
+- ✅ **Typed + interactive parameters** - scalars, enums, booleans, angles, colors, and image-coordinate inputs you pick directly on the preview (click a point, drag a region, eyedropper a color)
+- ✅ **Incremental live preview** - a prefix cache recomputes only the steps after your edit; superseded requests are cancelled
+- ✅ **Step-by-step comparison** - before/after wipe slider, any-two-step side-by-side, and a diff/overlay view
+- ✅ **Tested codebase + CI** - pytest (~64) + GitHub Actions (ruff/mypy/pytest) + pre-commit; FastAPI bumped to 0.115
+- ✅ **Docker** - full-stack `docker-compose` for local dev
 
-See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
+See [CHANGELOG.md](CHANGELOG.md) for the complete list of changes.
+
+> Previous (1.1.0): PostgreSQL persistence, JWT + Google OAuth authentication, admin panel, session management, and pipeline saving.
 
 ---
 
@@ -99,6 +102,9 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
   - **Live Mode**: Instant single-image processing with real-time preview
   - **Batch Mode**: Efficient multi-image processing with progress tracking
 - **77 Operations**: Industry-standard algorithms from OpenCV, Scikit-Image and PIL, served from a declarative backend registry (the UI renders each operation's controls dynamically from its schema)
+- **Typed & Interactive Parameters**: Scalars, enums, booleans, angles, colors, and image-coordinate inputs (click a point, drag a region, eyedropper a color) — picked directly on the preview
+- **Incremental Live Preview**: A prefix cache recomputes only the steps after the one you edited
+- **Step-by-Step Comparison**: Before/after wipe slider, any-two-step side-by-side, and a diff/overlay view
 - **Hierarchical Organization**: Logical categorization by library and operation type
 
 ### Advanced Features
@@ -111,6 +117,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
 - **Performance Analytics**: Millisecond-precision timing for every operation
 - **Undo/Redo System**: Complete operation history (Ctrl+Z/Ctrl+Y)
 - **Modern Interface**: Dark/light theme support with professional design
+- **Tested + CI**: pytest suite, GitHub Actions (ruff/mypy/pytest), and pre-commit hooks
 
 ### Developer Tools
 
@@ -148,7 +155,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
 - Lucide React for icons
 
 **Backend:**
-- FastAPI 0.104+ (high-performance API)
+- FastAPI 0.115+ (high-performance API)
 - OpenCV 4.8+ (computer vision)
 - Scikit-Image 0.22+ (scientific image analysis)
 - PIL/Pillow 10.4+ (image manipulation)
@@ -156,11 +163,17 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
 - PostgreSQL (production database)
 - Alembic (database migrations)
 
+**Quality & Tooling:**
+- pytest (test suite) + GitHub Actions CI
+- ruff (lint + format) and mypy (typing)
+- pre-commit hooks
+- Docker + docker-compose
+
 **Authentication & Security:**
 - JWT tokens (python-jose)
 - Google OAuth 2.0 (authlib)
 - Bcrypt password hashing (passlib)
-- Rate limiting middleware
+- Rate limiting middleware (per-IP on auth/upload/processing)
 - Security headers (CSP, HSTS, XSS protection)
 
 ---
@@ -473,7 +486,7 @@ See the [deployment/](deployment/) folder for:
 
 ## ⚠️ Limitations
 
-PixelFlow V1.1.0 has some known limitations:
+PixelFlow 1.2.0 has some known limitations:
 
 **Critical:**
 - Desktop-only interface (mobile support planned for V2.0)
@@ -482,12 +495,13 @@ PixelFlow V1.1.0 has some known limitations:
 - Free tier limitations (cold starts, 1GB database)
 
 **Moderate:**
-- Admin panel features partially implemented
+- Auth tokens stored in `localStorage` (httpOnly-cookie migration planned)
 - No email verification or password reset
 - Limited file format support (JPEG, PNG, BMP, TIFF only)
 - No batch download as ZIP file
+- Rate limiting is in-memory / single-instance (Redis needed for multi-instance)
 
-For complete list of 47 known limitations and workarounds, see [CURRENT_LIMITATIONS.md](CURRENT_LIMITATIONS.md)
+For the complete list of known limitations and what was recently resolved, see [CURRENT_LIMITATIONS.md](CURRENT_LIMITATIONS.md)
 
 ---
 
@@ -514,19 +528,18 @@ Use the [GitHub issue tracker](https://github.com/MauryanTitans/pixelflow/issues
 ### Areas Needing Help
 
 See [CURRENT_LIMITATIONS.md](CURRENT_LIMITATIONS.md) for areas where contributions would be valuable:
-- Background cleanup jobs implementation
+- httpOnly-cookie auth (move JWT out of localStorage)
+- Background cleanup jobs / scheduler
 - Mobile responsiveness (V2.0)
-- Email verification system
-- Password reset functionality
-- Enhanced admin panel features
-- Automated testing suite
+- Email verification & password reset
+- More image-processing operation batches
+- End-to-end (Playwright) tests in CI
 
 ### Adding New Operations
 
-See [guides/ADDING_OPERATIONS.md](guides/ADDING_OPERATIONS.md) for detailed instructions on:
-- Backend implementation
-- Frontend configuration
-- Testing and documentation
+Operations are added **entirely in the backend** — write a function and register it with a
+typed parameter schema; the UI picks it up automatically (no frontend changes). See
+[guides/ADDING_OPERATIONS.md](guides/ADDING_OPERATIONS.md).
 
 ---
 
@@ -574,6 +587,6 @@ This project is licensed under the Apache-2.0 License - see the [LICENSE](LICENS
 [![GitHub stars](https://img.shields.io/github/stars/MauryanTitans/pixelflow?style=social)](https://github.com/MauryanTitans/pixelflow)
 [![GitHub forks](https://img.shields.io/github/forks/MauryanTitans/pixelflow?style=social)](https://github.com/MauryanTitans/pixelflow/fork)
 
-**Current Version: 1.1.0** | [View Previous Versions](CHANGELOG.md)
+**Current Version: 1.2.0** | [View Previous Versions](CHANGELOG.md)
 
 </div>

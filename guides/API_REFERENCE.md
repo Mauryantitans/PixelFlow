@@ -222,10 +222,56 @@ Keeps session alive. Call every 30 seconds.
 
 ## 🔧 **Processing Endpoints**
 
+### **List Available Operations (schema)**
+
+```http
+GET /api/processing/operations
+```
+
+Returns the operation library as a grouped, typed schema (the single source of truth the
+frontend renders its controls from), plus a flat legacy list for backward compatibility.
+
+**Response (abridged):**
+```json
+{
+  "version": "1",
+  "total_count": 77,
+  "categories": [
+    {
+      "name": "Basic",
+      "subcategories": [
+        {
+          "name": "Adjustments",
+          "operations": [
+            {
+              "id": "brightness",
+              "label": "Brightness",
+              "category": "Basic",
+              "subcategory": "Adjustments",
+              "description": "Adjust image brightness",
+              "interactive": false,
+              "params": [
+                {"name": "amount", "label": "Amount", "type": "int",
+                 "default": 0, "min": -100, "max": 100}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "operations": ["Brightness", "Contrast", "..."]
+}
+```
+
+Param `type` is one of: `int`, `float`, `odd_kernel`, `angle`, `enum`, `bool`, `color`,
+`point`, `points`, `rect`. Coordinate params (`point`/`points`/`rect`) carry a `space`
+(`normalized` by default) and are picked on the preview in the UI.
+
 ### **Live Processing (Single Image)**
 
 ```http
-POST /api/processing/live
+POST /api/processing/process-live
 ```
 
 **Headers:** `Authorization: Bearer <token>` (optional)
@@ -235,18 +281,16 @@ POST /api/processing/live
 {
   "image_id": "uuid-here",
   "pipeline": [
-    {
-      "name": "Brightness",
-      "params": {"amount": 20}
-    },
-    {
-      "name": "Contrast",
-      "params": {"amount": 15}
-    }
+    {"name": "Brightness", "params": {"amount": 20}},
+    {"name": "Crop", "params": {"roi": {"x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8}}}
   ],
   "session_id": "session_id_here"
 }
 ```
+
+Operation identity is the `name` (a display label or `id`); both resolve through the
+backend alias map. Params use the keys from each operation's schema. Coordinate params are
+sent as normalized [0..1] values.
 
 **Response:**
 ```json
@@ -259,14 +303,25 @@ POST /api/processing/live
   "total_time": 0.156,
   "step_timings": [
     {"step_index": 0, "step_name": "Brightness", "duration": 45},
-    {"step_index": 1, "step_name": "Contrast", "duration": 111}
-  ]
+    {"step_index": 1, "step_name": "Crop", "duration": 12}
+  ],
+  "step_errors": [null, null]
 }
 ```
 
+`step_errors` is an array aligned with the pipeline; an entry is `null` when the step
+succeeded, or `{"op", "kind", "message", "param_errors": [...]}` when a step's params were
+invalid or the op failed (the pipeline is not aborted — one bad step is reported, not fatal).
+
 ### **Batch Processing (Multiple Images)**
 
-Process multiple images with the same pipeline by calling live endpoint multiple times.
+```http
+POST /api/processing/process
+```
+
+**Request Body:** like live, but `image_ids: string[]` instead of a single `image_id`.
+The response includes `processed_images`, optional `intermediate_results`, `step_timings`,
+and a per-image `step_errors`.
 
 ---
 

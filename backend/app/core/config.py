@@ -15,13 +15,12 @@ _DEFAULT_SECRET = "your-secret-key-change-in-production"
 class Settings:
     # App settings
     APP_NAME: str = os.environ.get("APP_NAME", "PixelFlow")
-    VERSION: str = os.environ.get("VERSION", "1.1.0")
+    VERSION: str = os.environ.get("VERSION", "1.2.0")
     DEBUG: bool = os.environ.get("DEBUG", "False").lower() == "true"
 
-    # Image storage settings
-    IMAGE_STORAGE: str = os.environ.get("IMAGE_STORAGE", "database")  # Options: filesystem, database
-    
     # File storage settings
+    # NOTE: images are always stored in the database; UPLOAD_DIR/PROCESSED_DIR remain
+    # for the session_manager's local scratch dirs only.
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     UPLOAD_DIR: Path = BASE_DIR / "uploads"
     PROCESSED_DIR: Path = BASE_DIR / "processed"

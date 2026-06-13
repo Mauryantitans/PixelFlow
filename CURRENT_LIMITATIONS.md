@@ -2,37 +2,56 @@
 
 ## Overview
 
-This document outlines known limitations, incomplete features, and bugs in PixelFlow V1.1.0. These are documented for transparency and to guide future development priorities.
+This document outlines known limitations, incomplete features, and bugs in PixelFlow.
+Documented for transparency and to guide future development priorities.
 
 **Last Updated:** June 2026  
-**Version:** 1.1.0  
-**Previous Version:** [1.0.0](https://github.com/Mauryantitans/PixelFlow) on GitHub
+**Version:** 1.2.0 (dynamic pipeline engine)  
+**Previous Versions:** 1.1.0 · [1.0.0](https://github.com/Mauryantitans/PixelFlow) on GitHub
 
 ---
 
-## ✅ Recently Fixed (June 2026)
+## ✅ Recently shipped (1.2.0 — dynamic pipeline engine)
 
-- **Admin settings now actually take effect.** Previously the admin panel saved
-  retention periods, session lifetimes, and cleanup toggles to the database, but
-  enforcement read *hardcoded* constants in `app/core/business_rules.py`, so those
-  changes were silently ignored. The database `SystemSettings` row is now the single
-  source of truth: `cleanup_service.py`, session creation (`session_db.py`), and
-  logout cleanup (`auth.py`) all read it, and the admin stats/overview endpoints
-  report the same values. `business_rules.py` is now seed/defaults only.
-- **SQLite admin-panel crash fixed.** The PIN-protected *Database → Sessions* view
-  raised a naive-vs-aware `datetime` `TypeError` on SQLite (local dev); comparisons
-  are now timezone-normalised via `app/utils/datetime_utils.ensure_aware`.
-- **Storage quota of 0 no longer crashes uploads** (divide-by-zero guard in
-  `quota_manager.py`).
-- **Empty (zero-byte) uploads** are now rejected with a clear `400` instead of a
-  cryptic image-decode error.
-- **PNG transparency is preserved.** Uploaded images with an alpha channel are stored
-  as PNG/RGBA instead of being flattened onto a white background; the processing
-  pipeline flattens to RGB only at process time, so operations are unaffected.
+A substantial architecture upgrade landed since 1.1.0. Several items previously listed
+below are now resolved (marked ✅ inline).
 
-**Reserved but not yet enforced** (intentionally left for a follow-up):
-`delete_oldest_on_quota` (destructive auto-delete), `cleanup_on_tab_close` (frontend
-beacon), and server-side `max_images_per_upload`.
+**Engine & operations**
+- **Backend operation registry is the single source of truth.** Each operation declares a
+  stable id, category, description, a **typed parameter schema**, and the callable. The
+  frontend renders controls dynamically from `GET /api/processing/operations`; the
+  duplicated frontend `*_OPERATION_CONFIGS` were removed.
+- **77 operations** (up from ~53): fixed Watershed & Denoise Wavelet, plus ~22 new
+  techniques (stylize, photo enhancement, segmentation, morphology, noise, …).
+- **Typed parameters**: int, float, odd-kernel, angle, enum, **bool**, **color**, and
+  image-coordinate **point / points / rect** — with server-side validation/coercion and
+  structured per-step errors (replacing silent no-ops).
+- **Interactive inputs**: click a seed **point**, drag a **region (ROI)**, or use an
+  **eyedropper** directly on the preview (Flood Fill, Crop, Inpaint Region).
+- **Incremental live preview**: a per-step prefix cache recomputes only steps from the
+  point of change (editing the last step ≈ 1 op); superseded live requests are cancelled.
+
+**Comparison & UX** — resolves **#30**
+- Before/after **wipe slider**, **side-by-side of any two pipeline steps**, and a
+  **diff/overlay** view.
+
+**Quality & infrastructure** — resolves **#31**, **#37**
+- **Automated tests** (pytest, 64 passing) + **GitHub Actions CI** + ruff/mypy + pre-commit.
+- **HTTP-level API tests** unlocked by a FastAPI 0.115 / Starlette 0.41 bump.
+- Removed the dual filesystem/database storage path (database-only) and the legacy
+  `main.py` shims; **Docker** + `docker-compose` already present.
+
+**Bug fixes (June 2026)**
+- Admin settings now actually drive enforcement — DB `SystemSettings` is the single source
+  of truth (`cleanup_service`, `session_db`, `auth` logout, admin stats all read it).
+- SQLite naive/aware datetime crash in the admin *Database → Sessions* view fixed
+  (`datetime_utils.ensure_aware`).
+- Storage-quota-of-0 divide-by-zero guarded; zero-byte uploads rejected with a clean 400.
+- PNG transparency preserved on upload; DB-mode batch upload (`/images/upload-multiple`) added.
+
+**Reserved / not yet enforced** (deliberate follow-ups): `delete_oldest_on_quota`,
+`cleanup_on_tab_close`, server-side `max_images_per_upload`, downscale-on-drag preview,
+**httpOnly-cookie auth**, and **Redis** multi-instance rate limiting.
 
 ---
 
@@ -611,29 +630,25 @@ During batch processing, UI may feel less responsive.
 
 ## 🔐 Security Limitations
 
-### 21. **Rate Limiting Not Comprehensive**
+### 21. **Rate Limiting — Single-Instance Only**
 
-**Status:** ⚠️ Basic Implementation Only
+**Status:** ⚠️ Implemented per-IP, in-memory (not multi-instance)
 
 **What's Implemented:**
 - ✅ Login attempt rate limiting (5 attempts, 15 min lockout)
-- ✅ Basic middleware for rate limiting
+- ✅ **Per-IP rate limiting on upload (~30/min) and processing (~50/min)** via the
+  rate-limit middleware (`middleware/rate_limit.py` + `security_config`)
+- ✅ Auth endpoints rate-limited
 
 **What's Missing:**
-- ❌ No API endpoint rate limiting (upload, processing)
-- ❌ No per-user rate limits
-- ❌ No IP-based global rate limiting
-- ❌ No DDoS protection
-
-**Risk:**
-- User could spam upload endpoint
-- Processing endpoint could be abused
-- High costs on paid tiers if abused
+- ❌ Limiter state is **in-memory**, so limits are per-instance — they don't coordinate
+  across multiple backend instances (would need **Redis**; deferred until horizontal scaling)
+- ❌ No per-user (vs per-IP) quotas
+- ❌ No edge DDoS protection
 
 **Mitigation:**
-- Free tier limits naturally limit abuse
-- Manual monitoring via admin panel
-- Can add Cloudflare for DDoS protection
+- App runs as a single instance today, so in-memory limiting is effective
+- Add Cloudflare / a Redis-backed limiter when scaling horizontally
 
 ---
 
@@ -825,49 +840,39 @@ Users must click "Upload" button - cannot drag images to browser.
 
 ---
 
-### 30. **No Image Comparison Tools**
+### 30. **Image Comparison Tools** — ✅ RESOLVED (1.2.0)
 
-**Status:** ❌ Not Implemented
+**Status:** ✅ Implemented
 
 **Description:**
-After processing, limited comparison between original and processed.
+The Inspector now offers rich step-by-step comparison.
 
-**Current Features:**
-- Can view original in gallery
-- Can view processed in results
-- No side-by-side comparison
-
-**Missing:**
-- ❌ No before/after slider
-- ❌ No split-screen comparison
-- ❌ No difference highlighting
-- ❌ No overlay comparison mode
+**Implemented:**
+- ✅ Before/after **wipe slider** (`components/CompareSlider.tsx`)
+- ✅ **Side-by-side of any two pipeline steps** (A/B stage selectors in `Inspector`)
+- ✅ **Difference / overlay heatmap** (`components/DiffView.tsx`)
+- ✅ Per-step intermediate results are retained so any stage can be inspected
 
 ---
 
 ## 🧪 Testing Limitations
 
-### 31. **No Automated Tests**
+### 31. **Automated Tests** — ✅ RESOLVED (1.2.0)
 
-**Status:** ❌ Not Implemented
+**Status:** ✅ Implemented (backend); frontend smoke tests present
 
-**Description:**
-No unit tests, integration tests, or E2E tests.
+**Implemented:**
+- ✅ Backend: **pytest** suite (~64 tests) covering the registry, executor, param specs,
+  coords, pipeline, preview cache, the interactive/extras op batches, and **HTTP-level
+  API tests** (via Starlette `TestClient` after the FastAPI 0.115 bump)
+- ✅ Frontend: Jest/RTL smoke tests + strict `tsc --noEmit`
+- ✅ **CI/CD pipeline**: `.github/workflows/ci.yml` runs ruff + mypy + pytest and the
+  frontend type-check/tests on push/PR
+- ✅ **pre-commit** hooks (`.pre-commit-config.yaml`)
 
-**Missing:**
-- ❌ Backend: No pytest tests
-- ❌ Frontend: No Jest tests
-- ❌ No CI/CD pipeline
-- ❌ No automated testing on PRs
-
-**Impact:**
-- Changes may introduce bugs
-- No automated quality assurance
-- Manual testing required for everything
-
-**Reason:**
-- Focus on core functionality first
-- Tests deferred to later versions
+**Still nice-to-have:**
+- ⬜ End-to-end (Playwright) tests in CI
+- ⬜ Broader frontend component coverage
 
 ---
 
@@ -1205,32 +1210,40 @@ Images served directly from backend, not via CDN.
 
 ## 🎯 Priority for Future Versions
 
-### **High Priority (V1.1):**
-1. Background cleanup jobs
-2. Dark/light theme toggle
-3. Batch download as ZIP
-4. Admin panel PIN persistence
-5. Mobile warning message (if accessed on mobile)
+### **✅ Delivered in 1.2.0**
+- Automated testing suite + CI (#31)
+- Image comparison tools — slider / side-by-side / diff (#30)
+- Docker + docker-compose (#37)
+- Backend operation registry + schema-driven UI + interactive (point/ROI/color) inputs
+- Incremental live-preview engine (prefix cache + request cancellation)
+- Rate limiting on upload/processing (per-IP)
 
-### **Medium Priority (V1.2):**
-6. Email verification
-7. Password reset
-8. Pipeline sharing UI
-9. Processing history dashboard
-10. Image metadata preservation (EXIF)
+### **High Priority (next)**
+1. httpOnly-cookie auth (move JWT out of localStorage) (#23)
+2. Background cleanup jobs / scheduler (#4)
+3. Batch download as ZIP (#10)
+4. Admin panel PIN persistence (#16)
+5. Mobile warning message / responsiveness (#1)
 
-### **Low Priority (V2.0):**
+### **Medium Priority**
+6. Email verification (#6)
+7. Password reset (#7)
+8. Pipeline sharing UI (#11)
+9. Processing history dashboard (#12)
+10. Image metadata preservation — EXIF (#13)
+
+### **Low Priority / Scale**
 11. Full mobile responsiveness
 12. WebSocket real-time updates
-13. Automated testing suite
-14. Third-party integrations
-15. Premium features/payment system
+13. Redis-backed rate limiting (multi-instance) (#21)
+14. CDN / external object storage for images (#5, #47)
+15. Third-party integrations / premium features
 
 ---
 
 ## ✅ Conclusion
 
-Despite these limitations, PixelFlow V1.1.0 is a **fully functional, production-ready image processing platform** suitable for:
+Despite these limitations, PixelFlow 1.2.0 is a **fully functional, production-ready image processing platform** suitable for:
 
 - ✅ Personal image processing projects
 - ✅ Portfolio demonstrations
@@ -1247,11 +1260,14 @@ Despite these limitations, PixelFlow V1.1.0 is a **fully functional, production-
 
 **The application excels at:**
 - ✅ Core image processing functionality
-- ✅ Real-time visual feedback
-- ✅ Extensive operation library (50+)
+- ✅ Real-time, incremental visual feedback
+- ✅ Extensible, schema-driven operation library (**77 operations**)
+- ✅ Interactive inputs (click a point, drag a region, pick a color)
+- ✅ Step-by-step comparison (slider / side-by-side / diff)
 - ✅ Professional desktop UX
 - ✅ Secure authentication
 - ✅ Database persistence
+- ✅ Tested codebase with CI
 - ✅ Free deployment ($0/month)
 
 ---

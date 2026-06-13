@@ -8,7 +8,7 @@ Copy these to Render Dashboard → Web Service → Environment Variables
 # Application Settings
 DEBUG=False
 APP_NAME=PixelFlow
-VERSION=1.0.0
+VERSION=1.2.0
 
 # Server Settings
 HOST=0.0.0.0
@@ -73,7 +73,7 @@ REACT_APP_API_URL=https://your-backend.onrender.com/api
 # Application Settings
 DEBUG=True
 APP_NAME=PixelFlow
-VERSION=1.0.0
+VERSION=1.2.0
 
 # Server Settings
 HOST=0.0.0.0

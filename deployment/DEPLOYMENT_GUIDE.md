@@ -125,12 +125,11 @@ Before deploying, ensure you have:
    ```
    DEBUG=False
    APP_NAME=PixelFlow
-   VERSION=1.0.0
+   VERSION=1.2.0
    
    # Database (paste your External Database URL from Step 1.4)
    DATABASE_URL=postgresql://pixelflow_user:password@host:port/pixelflow
    USE_SQLITE=False
-   IMAGE_STORAGE=database
    
    # Security (generate new secret key!)
    SECRET_KEY=<generate-new-secret-key>

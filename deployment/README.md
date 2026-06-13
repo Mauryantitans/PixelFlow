@@ -371,8 +371,7 @@ git push origin main
 - Wait for cold start completion
 
 **Images Not Persisting:**
-- Verify IMAGE_STORAGE=database
-- Check DATABASE_URL configured
+- Check DATABASE_URL configured (images are always stored in the database)
 - Ensure database initialized
 - Review backend logs
 

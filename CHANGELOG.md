@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-06-13
+
+### 🎉 Major New Features — Dynamic Pipeline Engine
+
+#### **Schema-driven operation registry (single source of truth)**
+- Operations are now declared **once, in the backend** (`backend/app/processing/`): each has a
+  stable id, category, description, a **typed parameter schema**, and the callable. The frontend
+  renders every control dynamically from `GET /api/processing/operations`.
+- Removed the duplicated frontend `*_OPERATION_CONFIGS` — no more "two places that must agree".
+- Backward compatible: saved pipelines reference operations by display name and resolve through
+  an **alias** map (zero migration).
+
+#### **77 operations (up from ~53)**
+- Fixed two long-broken ops: **Watershed** (`peak_local_max` rename) and **Denoise Wavelet**
+  (added PyWavelets).
+- Added ~22 new techniques across stylize, photo enhancement, segmentation, morphology, and noise
+  (e.g. Threshold Binary, Pixelate, Emboss, Motion Blur, Hue Rotate, Color Tint, Pencil Sketch,
+  Cartoon, Stylization, Edge-Preserving Smooth, TV/Wavelet Denoise, Skeletonize, Duotone, …).
+
+#### **Typed parameters + interactive inputs**
+- Param types: int, float, odd-kernel, angle, enum, **bool**, **color**, and image-coordinate
+  **point / points / rect**, with server-side validation/coercion.
+- **Pick directly on the preview**: click a seed **point**, drag a **region (ROI)**, or use the
+  **eyedropper** (Flood Fill, Crop, Inpaint Region). Coordinates are normalized [0..1] so they
+  survive preview scaling and upstream geometry changes.
+
+#### **Incremental live preview**
+- A per-step **prefix cache** recomputes only the steps from the point of change (editing the last
+  step ≈ 1 op); superseded live requests are cancelled (latest-edit-wins).
+
+#### **Step-by-step comparison**
+- Before/after **wipe slider**, **side-by-side of any two pipeline steps**, and a **diff/overlay**
+  view.
+
+### ✨ Enhancements
+- **Structured per-step errors** replace silent no-ops — a bad parameter or unknown op surfaces a
+  clear error banner instead of returning the image unchanged.
+- DB-mode **batch upload** (`/api/images/upload-multiple`) with partial-failure reporting.
+- PNG **transparency preserved** on upload; zero-byte uploads rejected with a clean 400.
+- **Admin settings now actually take effect** — the DB `SystemSettings` row is the single source of
+  truth for retention/session/cleanup policy (was reading hardcoded constants).
+- Per-IP **rate limiting on upload and processing** endpoints.
+
+### 🧪 Quality & Infrastructure
+- **Automated tests** (pytest, ~64) + **GitHub Actions CI** (ruff + mypy + pytest, frontend
+  type-check/tests) + **pre-commit** hooks.
+- Bumped **FastAPI 0.104 → 0.115.6** / **Starlette 0.27 → 0.41.3**, unlocking HTTP-level API tests.
+- **Docker** + `docker-compose` for the full stack.
+
+### 🔥 Removed
+- The dual **filesystem storage** path (`images.py` / `processing.py`) and the legacy `main.py`
+  `/upload` `/process` shims — images are always stored in the database now.
+- The `IMAGE_STORAGE` environment variable (no longer used).
+- Published demo admin credentials from the docs (provision your own via `ADMIN_EMAIL`/`ADMIN_PASSWORD`).
+
+### 🐛 Bug Fixes
+- SQLite naive/aware `datetime` crash in the admin *Database → Sessions* view (`ensure_aware`).
+- Storage-quota-of-0 divide-by-zero guard.
+- Live-preview status no longer reports "updated" before the rendered image is committed.
+
+### ⏭️ Deferred (documented for follow-up)
+- httpOnly-cookie auth (move JWT out of localStorage), Redis-backed multi-instance rate limiting,
+  downscale-on-drag preview.
+
+---
+
 ## [1.1.0] - 2025-10-18
 
 ### 🎉 Major New Features
