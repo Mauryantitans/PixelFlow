@@ -39,5 +39,5 @@ def test_operations_keeps_legacy_list_for_compat():
     body = _call()
     assert "Gaussian Blur" in body["operations"]
     assert "Flood Fill" in body["operations"]
-    assert body["total_count"] == 65
-    assert len(body["operations"]) == 65
+    assert body["total_count"] == 77
+    assert len(body["operations"]) == 77
