@@ -9,18 +9,19 @@ Handles Google Sign-In flow:
 5. Create or login user
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Request
+from fastapi import APIRouter, HTTPException, Depends, Request, Response
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import logging
-import secrets
 
 from ...core.database import get_db
 from ...core.config import settings
 from ...models.db_models import User
-from ...utils.auth import create_access_token, create_refresh_token
+from ...utils.auth import (
+    create_access_token, create_refresh_token, store_refresh_token, set_auth_cookies,
+)
 from ...utils.security import log_login_attempt
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ async def google_login():
 @router.post("/google/callback")
 async def google_callback(
     request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """Handle Google OAuth callback"""
@@ -156,17 +158,17 @@ async def google_callback(
         # Log successful login
         log_login_attempt(db, user.email, True, ip_address, user_agent)
         
-        # Create access tokens
+        # Create tokens, persist the refresh token (so it can be rotated/revoked
+        # like password logins), and deliver them as httpOnly cookies.
         access_token = create_access_token(data={"sub": str(user.id)})
         refresh_token = create_refresh_token(data={"sub": str(user.id)})
-        
+        store_refresh_token(db, user.id, refresh_token)
+        set_auth_cookies(response, access_token, refresh_token)
+
         logger.info(f"OAuth login successful: {user.email}")
-        
+
         return {
             "success": True,
-            "access_token": access_token,
-            "refresh_token": refresh_token,
-            "token_type": "bearer",
             "user": {
                 "id": user.id,
                 "email": user.email,

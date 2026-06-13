@@ -334,7 +334,6 @@ export interface AuthContextType {
   logout: () => void;
   isAuthenticated: boolean;
   setUser: (user: User | null) => void;
-  setToken: (token: string) => void;
 }
 
 // Saved Pipeline types

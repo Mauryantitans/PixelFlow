@@ -10,13 +10,36 @@ import {
   OperationSchema
 } from '../types';
 
-// Create axios instance with base configuration
+// Read a cookie value by name (used for the CSRF double-submit token).
+export function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp('(^|;\\s*)' + name + '=([^;]*)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+const UNSAFE_METHODS = ['post', 'put', 'delete', 'patch'];
+
+// Create axios instance with base configuration.
+// withCredentials sends the httpOnly auth cookies on every request.
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000/api',
   timeout: 30000, // 30 second timeout
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+// Request interceptor: echo the CSRF cookie back as a header on state-changing
+// requests (double-submit-cookie CSRF protection; the backend verifies the match).
+api.interceptors.request.use((config) => {
+  if (config.method && UNSAFE_METHODS.includes(config.method.toLowerCase())) {
+    const csrf = getCookie('pf_csrf');
+    if (csrf) {
+      config.headers = config.headers ?? {};
+      (config.headers as any)['X-CSRF-Token'] = csrf;
+    }
+  }
+  return config;
 });
 
 // Response interceptor for error handling
@@ -35,18 +58,9 @@ export class ApiService {
       formData.append('file', file);
       formData.append('session_id', sessionId);
 
-      // Add auth token if available
-      const token = localStorage.getItem('pixelflow_access_token');
-      const headers: any = {
-        'Content-Type': 'multipart/form-data',
-      };
-      
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
+      // Auth travels in the httpOnly cookie (sent via withCredentials).
       const response: AxiosResponse<UploadResponse> = await api.post('/images/upload', formData, {
-        headers
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       return response.data;
@@ -67,17 +81,10 @@ export class ApiService {
       });
       formData.append('session_id', sessionId);
 
-      // Include auth token so authenticated users get their quota, not guest quota
-      const token = localStorage.getItem('pixelflow_access_token');
-      const headers: Record<string, string> = {
-        'Content-Type': 'multipart/form-data',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
-
+      // Auth travels in the httpOnly cookie (sent via withCredentials), so
+      // authenticated users get their quota, not guest quota.
       const response: AxiosResponse<MultipleUploadResponse> = await api.post('/images/upload-multiple', formData, {
-        headers,
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       return response.data;
@@ -335,12 +342,16 @@ export class ApiService {
   }
 
   /**
-   * Generate unique session ID
+   * Generate a unique, unguessable session ID (guest data isolation relies on it).
    */
   static generateSessionId(): string {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substr(2, 9);
-    return `session_${timestamp}_${random}`;
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `session_${crypto.randomUUID()}`;
+    }
+    // Fallback for older browsers: 16 random bytes hex.
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return `session_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
   }
 }
 

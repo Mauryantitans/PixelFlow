@@ -72,6 +72,18 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = SessionSecurity.ACCESS_TOKEN_EXPIRE_MINUTES
     REFRESH_TOKEN_EXPIRE_DAYS: int = SessionSecurity.REFRESH_TOKEN_EXPIRE_DAYS
 
+    # Auth cookie settings (httpOnly cookie-based auth).
+    # In production the frontend should be served same-origin with the API (e.g. a
+    # Vercel rewrite proxying /api -> the backend) so cookies are first-party and
+    # SameSite=Lax works in every browser. COOKIE_SAMESITE may be "lax", "strict",
+    # or "none" (none requires Secure=True and a cross-site, third-party-cookie setup).
+    # Secure defaults to on in production (DEBUG=False) and off in local dev.
+    COOKIE_SECURE: bool = os.environ.get(
+        "COOKIE_SECURE", "False" if DEBUG else "True"
+    ).lower() == "true"
+    COOKIE_SAMESITE: str = os.environ.get("COOKIE_SAMESITE", "lax").lower()
+    COOKIE_DOMAIN: Optional[str] = os.environ.get("COOKIE_DOMAIN") or None
+
     # Google OAuth settings
     GOOGLE_CLIENT_ID: str = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.environ.get("GOOGLE_CLIENT_SECRET", "")

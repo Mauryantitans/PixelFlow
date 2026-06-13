@@ -16,7 +16,7 @@ declare global {
 
 export const GoogleSignIn: React.FC<GoogleSignInProps> = ({ onSuccess, onError }) => {
   const buttonRef = useRef<HTMLDivElement>(null);
-  const { setUser, setToken } = useAuth();
+  const { setUser } = useAuth();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = React.useState(false);
 
@@ -71,18 +71,16 @@ export const GoogleSignIn: React.FC<GoogleSignInProps> = ({ onSuccess, onError }
     setIsLoading(true);
 
     try {
-      // Send credential to backend
+      // Send credential to backend. The backend sets httpOnly auth cookies and
+      // returns only the user record (no tokens in the body).
       const result = await axios.post(
         `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/auth/google/callback`,
-        { credential: response.credential }
+        { credential: response.credential },
+        { withCredentials: true }
       );
 
       if (result.data.success) {
-        // Store token and user info
-        const { access_token, user } = result.data;
-
-        setToken(access_token);
-        setUser(user);
+        setUser(result.data.user);
 
         if (onSuccess) {
           onSuccess();

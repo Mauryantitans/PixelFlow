@@ -16,9 +16,13 @@ export class SessionUtils {
   }
   
   static generateSessionId(): string {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substr(2, 9);
-    return `session_${timestamp}_${random}`;
+    // Unguessable id — guest data isolation relies on it not being predictable.
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `session_${crypto.randomUUID()}`;
+    }
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return `session_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
   }
   
   static clearSession(): void {

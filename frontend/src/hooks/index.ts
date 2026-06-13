@@ -9,7 +9,7 @@ import {
   ProcessingTiming,
   StepErrorDTO,
 } from '../types';
-import { ApiService } from '../services/api';
+import { ApiService, getCookie } from '../services/api';
 import { SessionUtils, ThemeUtils } from '../utils';
 
 /**
@@ -37,16 +37,11 @@ export function useSessionHeartbeat() {
     // Send initial heartbeat immediately
     const sendHeartbeat = async () => {
       try {
-        const token = localStorage.getItem('pixelflow_access_token');
-        const headers: any = { 'Content-Type': 'application/json' };
-        
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`;
-        }
-        
+        // Auth travels in the httpOnly cookie; credentials: 'include' sends it.
         const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/heartbeat`, {
           method: 'POST',
-          headers,
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({ session_id: sessionId })
         });
         
@@ -235,14 +230,16 @@ export function useImages() {
     // Remove from UI immediately for instant feedback
     setImages(prev => prev.filter(img => img.id !== imageId));
 
-    // Delete from database — must include auth token so ownership check passes
+    // Delete from database — auth travels in the httpOnly cookie; echo the CSRF
+    // cookie back as a header (state-changing request).
     try {
-      const token = localStorage.getItem('pixelflow_access_token');
+      const csrf = getCookie('pf_csrf');
       await fetch(
         `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/images/image/${imageId}`,
         {
           method: 'DELETE',
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: 'include',
+          headers: csrf ? { 'X-CSRF-Token': csrf } : {},
         }
       );
     } catch {

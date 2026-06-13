@@ -1,6 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Form
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, Form
 from sqlalchemy.orm import Session
-from datetime import timedelta
+from typing import Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -10,7 +10,7 @@ from ...core.config import settings
 from ...models.db_models import User
 from ...models.schemas import (
     UserCreate, UserResponse, UserUpdate,
-    LoginRequest, Token
+    LoginRequest
 )
 from ...utils.auth import (
     get_password_hash, authenticate_user,
@@ -18,6 +18,7 @@ from ...utils.auth import (
     get_current_user, get_current_active_admin,
     store_refresh_token, verify_and_rotate_refresh_token,
     revoke_user_refresh_tokens,
+    set_auth_cookies, clear_auth_cookies, REFRESH_COOKIE,
 )
 from ...utils.security import (
     check_login_attempts, log_login_attempt, clear_login_attempts
@@ -58,14 +59,18 @@ async def register_user(user: UserCreate, db: Session = Depends(get_db)):
     
     return db_user
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=UserResponse)
 async def login(
     request: Request,
     login_data: LoginRequest,
+    response: Response,
     db: Session = Depends(get_db)
 ):
-    """Login and get access token with security tracking"""
-    
+    """Login: set httpOnly auth cookies and return the user (with security tracking).
+
+    Tokens are delivered as httpOnly cookies (never in the response body / JS), so
+    they can't be read by client-side script (mitigates XSS token theft)."""
+
     # Get client IP and user agent
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
@@ -137,11 +142,9 @@ async def login(
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
     store_refresh_token(db, user.id, refresh_token)
 
-    return {
-        "access_token": access_token,
-        "refresh_token": refresh_token,
-        "token_type": "bearer"
-    }
+    # Deliver tokens as httpOnly cookies; the body carries only the user record.
+    set_auth_cookies(response, access_token, refresh_token)
+    return user
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
@@ -198,37 +201,48 @@ async def delete_current_user(
     return None
 
 
-@router.post("/refresh", response_model=Token)
+@router.post("/refresh")
 async def refresh_access_token(
-    refresh_token: str = Form(...),
+    request: Request,
+    response: Response,
     db: Session = Depends(get_db)
 ):
     """
-    Exchange a valid refresh token for a new access + refresh token pair.
+    Exchange the httpOnly refresh-token cookie for a fresh access + refresh pair.
 
     The old refresh token is deleted on success (token rotation), so each
     refresh token can only be used once.  Stolen tokens are therefore
     automatically invalidated the next time the legitimate client refreshes.
+    New tokens are set as httpOnly cookies; the body carries no tokens.
     """
+    refresh_token = request.cookies.get(REFRESH_COOKIE)
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     user, new_access, new_refresh = verify_and_rotate_refresh_token(db, refresh_token)
-    return {
-        "access_token": new_access,
-        "refresh_token": new_refresh,
-        "token_type": "bearer",
-    }
+    set_auth_cookies(response, new_access, new_refresh)
+    return {"success": True}
 
 
 @router.post("/logout")
 async def logout(
+    response: Response,
     current_user: User = Depends(get_current_user),
-    session_id: str = Form(...),
+    session_id: Optional[str] = Form(None),
     db: Session = Depends(get_db)
 ):
-    """Logout and cleanup user data (except saved pipelines)"""
+    """Logout: clear auth cookies, revoke refresh tokens, and cleanup user data
+    (except saved pipelines)."""
     from ...models.db_models import Session as DBSession, UploadedImage, ProcessedImage
     from ...utils.settings_manager import get_settings
 
     logger.info(f"User logout: {current_user.email}")
+
+    # Clear the httpOnly auth cookies on the client.
+    clear_auth_cookies(response)
 
     # Revoke all persisted refresh tokens so stolen tokens can no longer be used
     revoked = revoke_user_refresh_tokens(db, current_user.id)

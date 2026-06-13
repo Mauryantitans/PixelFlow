@@ -178,23 +178,25 @@ Before deploying, ensure you have:
 
 ## Part 3: Frontend Deployment (Vercel)
 
-### Step 1: Prepare Frontend
+### Step 1: Prepare Frontend (same-origin proxy for httpOnly cookies)
 
-1. **Create `vercel.json` in frontend folder**
-   Already created in `deployment/` folder!
-   ```bash
-   # Copy to frontend folder
-   copy deployment\vercel.json frontend\
+Auth uses **httpOnly cookies**. Since Vercel and Render are different sites, third-party
+cookies would be blocked by Safari/Chrome — so the frontend proxies the API **same-origin**
+and the cookies become first-party (`SameSite=Lax`, works everywhere).
+
+1. **Point the proxy at your backend**
+   `frontend/vercel.json` already contains the rewrite — edit its destination host:
+   ```jsonc
+   "rewrites": [
+     { "source": "/api/:path*",
+       "destination": "https://YOUR-BACKEND.onrender.com/api/:path*" },   // ← your Render URL
+     { "source": "/(.*)", "destination": "/index.html" }
+   ]
    ```
 
-2. **Update API URL**
-   Edit `frontend/src/services/api.ts`:
-   ```typescript
-   const api = axios.create({
-     baseURL: process.env.REACT_APP_API_URL || 'https://pixelflow-backend.onrender.com/api',
-     // ... rest of config
-   });
-   ```
+2. **Use a relative API URL** (so calls are same-origin and the proxy handles them):
+   set `REACT_APP_API_URL=/api` in the Vercel env (Step 2 below). No code change needed —
+   `services/api.ts` reads this env var.
 
 ### Step 2: Deploy to Vercel
 
@@ -220,22 +222,25 @@ Before deploying, ensure you have:
    Click **"Environment Variables"** tab:
    ```
    Name: REACT_APP_API_URL
-   Value: https://pixelflow-backend.onrender.com/api
+   Value: /api
    ```
-   (Use your actual Render backend URL)
+   (Relative path — the `frontend/vercel.json` rewrite proxies it to your Render backend,
+   keeping auth cookies first-party.)
 
 5. **Deploy**
    - Click **"Deploy"**
    - Wait 3-5 minutes for build
    - You'll get a URL like: `https://pixelflow.vercel.app`
 
-6. **Update CORS in Backend**
-   Go back to Render → Backend → Environment Variables
-   Update `CORS_ORIGINS`:
+6. **Set backend env**
+   Go back to Render → Backend → Environment Variables:
    ```
-   CORS_ORIGINS=https://pixelflow.vercel.app,http://localhost:3000
+   ALLOWED_ORIGINS=https://pixelflow.vercel.app,http://localhost:3000
+   COOKIE_SECURE=True
+   COOKIE_SAMESITE=lax
    ```
-   
+   (`ALLOWED_ORIGINS` still helps for direct/dev calls; the proxied path is same-origin.)
+
    **Important**: After updating, Render will automatically redeploy!
 
 ### Step 3: Configure Custom Domain (Optional)

@@ -170,7 +170,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete list of changes.
 - Docker + docker-compose
 
 **Authentication & Security:**
-- JWT tokens (python-jose)
+- JWT in **httpOnly cookies** (python-jose) — not readable by JS
+- **CSRF protection** (double-submit cookie) + refresh-token rotation/revocation
 - Google OAuth 2.0 (authlib)
 - Bcrypt password hashing (passlib)
 - Rate limiting middleware (per-IP on auth/upload/processing)
@@ -495,7 +496,6 @@ PixelFlow 1.2.0 has some known limitations:
 - Free tier limitations (cold starts, 1GB database)
 
 **Moderate:**
-- Auth tokens stored in `localStorage` (httpOnly-cookie migration planned)
 - No email verification or password reset
 - Limited file format support (JPEG, PNG, BMP, TIFF only)
 - No batch download as ZIP file

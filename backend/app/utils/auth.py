@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import hashlib
+import secrets
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 import logging
@@ -17,8 +18,53 @@ logger = logging.getLogger(__name__)
 # Password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# HTTP Bearer for token authentication
-security = HTTPBearer()
+# HTTP Bearer for token authentication. auto_error=False so requests authenticated
+# via httpOnly cookie (no Authorization header) are not rejected before we get a
+# chance to read the cookie. Bearer is still accepted for non-browser API clients.
+security = HTTPBearer(auto_error=False)
+
+# ---------------------------------------------------------------------------
+# Auth cookies (httpOnly cookie-based auth)
+# ---------------------------------------------------------------------------
+# Access token: short-lived, httpOnly, sent on every API call (Path=/).
+# Refresh token: long-lived, httpOnly, scoped to the refresh endpoint path so it
+#   is only ever sent there (Path=/api/auth).
+# CSRF token: NOT httpOnly so the SPA can read it and echo it back in the
+#   X-CSRF-Token header (double-submit-cookie CSRF protection).
+ACCESS_COOKIE = "pf_access"
+REFRESH_COOKIE = "pf_refresh"
+CSRF_COOKIE = "pf_csrf"
+REFRESH_COOKIE_PATH = "/api/auth"
+
+
+def set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    """Attach access/refresh/CSRF cookies to the response."""
+    samesite = settings.COOKIE_SAMESITE if settings.COOKIE_SAMESITE in ("lax", "strict", "none") else "lax"
+    secure = settings.COOKIE_SECURE or samesite == "none"  # SameSite=None requires Secure
+    domain = settings.COOKIE_DOMAIN
+    access_max_age = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    refresh_max_age = settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
+
+    response.set_cookie(
+        ACCESS_COOKIE, access_token, max_age=access_max_age, path="/",
+        httponly=True, secure=secure, samesite=samesite, domain=domain,
+    )
+    response.set_cookie(
+        REFRESH_COOKIE, refresh_token, max_age=refresh_max_age, path=REFRESH_COOKIE_PATH,
+        httponly=True, secure=secure, samesite=samesite, domain=domain,
+    )
+    response.set_cookie(
+        CSRF_COOKIE, secrets.token_urlsafe(32), max_age=refresh_max_age, path="/",
+        httponly=False, secure=secure, samesite=samesite, domain=domain,
+    )
+
+
+def clear_auth_cookies(response: Response) -> None:
+    """Remove the auth cookies (on logout). Path must match the set path."""
+    domain = settings.COOKIE_DOMAIN
+    response.delete_cookie(ACCESS_COOKIE, path="/", domain=domain)
+    response.delete_cookie(REFRESH_COOKIE, path=REFRESH_COOKIE_PATH, domain=domain)
+    response.delete_cookie(CSRF_COOKIE, path="/", domain=domain)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash"""
@@ -35,8 +81,10 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    
-    to_encode.update({"exp": expire, "type": "access"})
+
+    # jti makes every token unique even when issued in the same second (the exp
+    # claim is whole-second), so distinct tokens never collide.
+    to_encode.update({"exp": expire, "type": "access", "jti": secrets.token_urlsafe(8)})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     logger.debug(f"Created access token for data: {data}")
     return encoded_jwt
@@ -45,7 +93,7 @@ def create_refresh_token(data: dict) -> str:
     """Create a JWT refresh token"""
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({"exp": expire, "type": "refresh"})
+    to_encode.update({"exp": expire, "type": "refresh", "jti": secrets.token_urlsafe(8)})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
@@ -63,14 +111,30 @@ def decode_token(token: str) -> dict:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+def _token_from_request(
+    request: Request, credentials: Optional[HTTPAuthorizationCredentials]
+) -> Optional[str]:
+    """Resolve the access token from the Authorization header or the access cookie."""
+    if credentials:
+        return credentials.credentials
+    return request.cookies.get(ACCESS_COOKIE)
+
+
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> User:
-    """Get the current authenticated user"""
-    token = credentials.credentials
+    """Get the current authenticated user (from bearer header or httpOnly cookie)"""
+    token = _token_from_request(request, credentials)
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     logger.debug(f"Getting current user with token: {token[:20]}...")
-    
+
     try:
         payload = decode_token(token)
         user_id_str = payload.get("sub")
@@ -225,15 +289,16 @@ def revoke_user_refresh_tokens(db: Session, user_id: int) -> int:
 
 
 async def get_current_user_optional(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
     db: Session = Depends(get_db)
 ) -> Optional[User]:
-    """Get current user if authenticated, None if guest"""
-    if not credentials:
+    """Get current user if authenticated, None if guest (bearer header or cookie)"""
+    token = _token_from_request(request, credentials)
+    if not token:
         return None
-    
+
     try:
-        token = credentials.credentials
         payload = decode_token(token)
         user_id_str = payload.get("sub")
         token_type = payload.get("type")

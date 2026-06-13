@@ -11,7 +11,7 @@ from .core.database import init_db
 from .core.security_config import CORSSettings
 from .api import api_router
 from .utils.session_manager import session_manager
-from .middleware import RateLimitMiddleware, SecurityHeadersMiddleware
+from .middleware import RateLimitMiddleware, SecurityHeadersMiddleware, CSRFMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -94,6 +94,7 @@ app.add_middleware(
 # Add security middlewares
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFMiddleware)
 
 # Include API routes
 app.include_router(api_router, prefix="/api")
