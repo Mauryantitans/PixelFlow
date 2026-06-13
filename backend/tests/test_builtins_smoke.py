@@ -34,4 +34,4 @@ def test_every_builtin_runs_with_defaults():
 
 
 def test_registry_has_expected_count():
-    assert len(registry.all()) == 55
+    assert len(registry.all()) == 65

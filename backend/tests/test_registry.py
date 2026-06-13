@@ -11,8 +11,8 @@ def test_slugify():
 
 def test_all_builtins_registered():
     ops = registry.all()
-    # 53 ported built-ins + 2 interactive ops (flood_fill, crop)
-    assert len(ops) == 55
+    # 53 ported built-ins + 2 interactive (flood_fill, crop) + 10 extras
+    assert len(ops) == 65
 
 
 def test_resolve_by_id_label_and_alias():

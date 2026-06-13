@@ -812,7 +812,8 @@ class ImageProcessor:
             gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
             
             distance = ndi.distance_transform_edt(gray > filters.threshold_otsu(gray))
-            coords = feature.peak_local_maxima(distance, min_distance=20, threshold_abs=0.3*distance.max())
+            # peak_local_maxima was renamed to peak_local_max; it returns (N, 2) coords.
+            coords = feature.peak_local_max(distance, min_distance=20, threshold_abs=0.3 * distance.max())
             
             mask = np.zeros(distance.shape, dtype=bool)
             mask[tuple(coords.T)] = True
