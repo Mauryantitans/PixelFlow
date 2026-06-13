@@ -1,6 +1,5 @@
 from fastapi import APIRouter
-from .routes import images, images_db, processing, processing_db, auth, oauth, pipelines, admin
-from ..core.config import settings
+from .routes import images_db, processing_db, auth, oauth, pipelines, admin
 
 api_router = APIRouter()
 
@@ -23,29 +22,17 @@ api_router.include_router(
     tags=["pipelines"]
 )
 
-# Use database or filesystem image storage based on config
-if settings.IMAGE_STORAGE == "database":
-    api_router.include_router(
-        images_db.router,
-        prefix="/images",
-        tags=["images"]
-    )
-    api_router.include_router(
-        processing_db.router,
-        prefix="/processing",
-        tags=["processing"]
-    )
-else:
-    api_router.include_router(
-        images.router,
-        prefix="/images",
-        tags=["images"]
-    )
-    api_router.include_router(
-        processing.router,
-        prefix="/processing",
-        tags=["processing"]
-    )
+# Images are stored in the database (the filesystem path was removed in Phase 6).
+api_router.include_router(
+    images_db.router,
+    prefix="/images",
+    tags=["images"]
+)
+api_router.include_router(
+    processing_db.router,
+    prefix="/processing",
+    tags=["processing"]
+)
 
 api_router.include_router(
     admin.router,

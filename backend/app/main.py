@@ -143,31 +143,6 @@ async def health_check():
         }
     }
 
-# Legacy endpoints for compatibility with the original frontend
-@app.post("/upload")
-async def legacy_upload(file, session_id: str):
-    """Legacy upload endpoint - redirects to new API"""
-    from .api.routes.images import upload_image
-    return await upload_image(file, session_id)
-
-@app.post("/process")
-async def legacy_process(request):
-    """Legacy process endpoint - redirects to new API"""
-    from .api.routes.processing import process_images
-    return await process_images(request)
-
-@app.post("/process-live")
-async def legacy_process_live(request):
-    """Legacy process-live endpoint - redirects to new API"""
-    from .api.routes.processing import process_live
-    return await process_live(request)
-
-@app.post("/cleanup-session")
-async def legacy_cleanup_session(request):
-    """Legacy cleanup endpoint - redirects to new API"""
-    from .api.routes.images import cleanup_session
-    return await cleanup_session(request)
-
 if __name__ == "__main__":
     uvicorn.run(
         "app.main:app",

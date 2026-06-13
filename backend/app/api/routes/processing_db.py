@@ -14,7 +14,6 @@ from sqlalchemy.orm import Session
 from PIL import Image as PILImage
 
 from ...models import ProcessRequest, LiveProcessRequest, ProcessResponse, LiveProcessResponse
-from ...core.config import settings
 from ...core.database import get_db
 from ...models.db_models import UploadedImage
 from ...utils.session_manager import session_manager
@@ -41,34 +40,16 @@ def _flatten_to_rgb(img: PILImage.Image) -> PILImage.Image:
     return img
 
 
-def load_image_from_db_or_filesystem(image_id: str, session_id: str, db: Session) -> PILImage.Image:
-    """Load image from database or filesystem based on configuration"""
-    
-    if settings.IMAGE_STORAGE == "database":
-        # Load from database
-        uploaded_img = db.query(UploadedImage).filter(UploadedImage.id == image_id).first()
-        
-        if not uploaded_img:
-            raise HTTPException(status_code=404, detail=f"Image {image_id} not found in database")
-        
-        # Convert bytes to PIL Image. Stored originals may be RGBA (transparent
-        # PNGs are preserved on upload), but the processing operations expect a
-        # 3-channel RGB image, so flatten alpha onto white here.
-        img = PILImage.open(io.BytesIO(uploaded_img.image_data))
-        img = _flatten_to_rgb(img)
-        logger.info(f"Loaded image from database: {image_id}")
-        return img
-    else:
-        # Load from filesystem
-        session_upload_dir = settings.UPLOAD_DIR / session_id
-        image_files = list(session_upload_dir.glob(f"{image_id}.*"))
-        
-        if not image_files:
-            raise HTTPException(status_code=404, detail=f"Image {image_id} not found in filesystem")
-        
-        img = ImageProcessor.load_image(str(image_files[0]))
-        logger.info(f"Loaded image from filesystem: {image_id}")
-        return img
+def load_image_from_db(image_id: str, db: Session) -> PILImage.Image:
+    """Load an uploaded image from the database as an RGB PIL image."""
+    uploaded_img = db.query(UploadedImage).filter(UploadedImage.id == image_id).first()
+    if not uploaded_img:
+        raise HTTPException(status_code=404, detail=f"Image {image_id} not found in database")
+
+    # Stored originals may be RGBA (transparent PNGs are preserved on upload), but
+    # the processing operations expect 3-channel RGB, so flatten alpha onto white.
+    img = PILImage.open(io.BytesIO(uploaded_img.image_data))
+    return _flatten_to_rgb(img)
 
 
 async def process_single_image_pipeline(
@@ -143,7 +124,7 @@ async def process_images(request: ProcessRequest, db: Session = Depends(get_db))
         for image_id in request.image_ids:
             try:
                 # Load image from database or filesystem
-                image = load_image_from_db_or_filesystem(image_id, request.session_id, db)
+                image = load_image_from_db(image_id, db)
                 
                 # Process the image
                 result = await process_single_image_pipeline(
@@ -199,7 +180,7 @@ async def process_live(request: LiveProcessRequest, db: Session = Depends(get_db
     try:
         if not request.pipeline:
             # If no pipeline, return original image
-            image = load_image_from_db_or_filesystem(request.image_id, request.session_id, db)
+            image = load_image_from_db(request.image_id, db)
             original_base64 = ImageProcessor.image_to_base64(image)
             
             return LiveProcessResponse(
@@ -213,7 +194,7 @@ async def process_live(request: LiveProcessRequest, db: Session = Depends(get_db
         logger.info(f"Live processing image {request.image_id} with {len(request.pipeline)} operations")
         
         # Load image from database or filesystem
-        image = load_image_from_db_or_filesystem(request.image_id, request.session_id, db)
+        image = load_image_from_db(request.image_id, db)
         
         # Process with intermediate results and timing (prefix-cached)
         result = await process_single_image_pipeline(

@@ -85,7 +85,7 @@ const App: React.FC = () => {
   
   const galleryModal = useModal();
   const methodDetailsModal = useModal();
-  const { palette, allLabels, getOp, getDefaults } = useOperationSchema();
+  const { palette, allLabels, getOp, getDefaults, loading: opsLoading, error: opsError } = useOperationSchema();
   const [selectedMethodName, setSelectedMethodName] = useState<string>('');
   
   // State for search functionality
@@ -520,6 +520,21 @@ const App: React.FC = () => {
             
             {/* Enhanced Operations List */}
             <div className="flex-grow overflow-y-auto space-y-1 pr-1">
+              {(opsLoading || opsError) && (
+                <div className="p-3 text-sm text-gray-500 dark:text-gray-400 flex items-center gap-2">
+                  {opsLoading ? (
+                    <>
+                      <LucideReact.Loader2 className="w-4 h-4 animate-spin" />
+                      Loading operations…
+                    </>
+                  ) : (
+                    <>
+                      <LucideReact.AlertTriangle className="w-4 h-4 text-red-500" />
+                      Couldn't load operations: {opsError}
+                    </>
+                  )}
+                </div>
+              )}
               {Object.entries(getFilteredOperations()).map(([libraryName, libraryCategories], libraryIndex) => (
                 <div key={libraryName} className={`library-container ${
                   libraryName === 'OpenCV' ? 'library-opencv' : 

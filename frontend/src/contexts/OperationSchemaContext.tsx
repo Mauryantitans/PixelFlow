@@ -1,15 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { ApiService } from '../services/api';
-import {
-  OperationSchema,
-  OperationSpecDTO,
-  ParamSpecDTO,
-  OperationConfig,
-  OperationParam,
-  DEFAULT_OPERATION_CONFIGS,
-  OPENCV_OPERATION_CONFIGS,
-  SCIKIT_OPERATION_CONFIGS,
-} from '../types';
+import { OperationSchema, OperationSpecDTO } from '../types';
 
 // library display name -> { subcategory -> [operation labels] }
 type Palette = Record<string, Record<string, string[]>>;
@@ -17,7 +8,6 @@ type Palette = Record<string, Record<string, string[]>>;
 interface OperationSchemaContextValue {
   loading: boolean;
   error: string | null;
-  usingFallback: boolean;
   /** Resolve an operation by id OR display label (case-insensitive). */
   getOp: (idOrLabel: string) => OperationSpecDTO | undefined;
   /** Default params (name -> default value) for an operation. */
@@ -30,95 +20,6 @@ interface OperationSchemaContextValue {
 
 // Backend category "Basic" surfaces in the UI as "Basic Operations" (matches icons).
 const LIBRARY_DISPLAY: Record<string, string> = { Basic: 'Basic Operations' };
-
-// Subcategory grouping for Basic ops in the static fallback (the API provides
-// its own grouping when reachable).
-const BASIC_GROUPS: Record<string, string[]> = {
-  Adjustments: ['Brightness', 'Contrast', 'Saturation', 'Exposure'],
-  Filters: ['Grayscale', 'Sepia', 'Invert', 'Solarize', 'Posterize'],
-  'Blur & Sharpen': ['Sharpen', 'Gaussian Blur'],
-  Effects: ['Vignette', 'Grain'],
-};
-
-// ---- static-config → schema-DTO fallback (used only if the API is unreachable) ----
-function adaptParam(p: OperationParam): ParamSpecDTO {
-  if (p.type === 'select') {
-    return {
-      name: p.name,
-      label: p.name,
-      type: 'enum',
-      default: p.default,
-      options: (p.options ?? []).map((o) => ({ value: o, label: o })),
-      help: p.description,
-    };
-  }
-  if (p.type === 'checkbox') {
-    return { name: p.name, label: p.name, type: 'bool', default: p.default, help: p.description };
-  }
-  // slider -> int when all values are integers, else float
-  const nums = [p.default, p.min, p.max].filter((v) => typeof v === 'number') as number[];
-  const isInt = nums.length > 0 && nums.every((v) => Number.isInteger(v));
-  return {
-    name: p.name,
-    label: p.name,
-    type: isInt ? 'int' : 'float',
-    default: p.default,
-    min: p.min,
-    max: p.max,
-    help: p.description,
-  };
-}
-
-function adaptConfig(
-  label: string,
-  category: string,
-  subcategory: string,
-  cfg: OperationConfig
-): OperationSpecDTO {
-  return {
-    id: label,
-    label,
-    category,
-    subcategory,
-    description: cfg.description,
-    interactive: false,
-    params: cfg.params.map(adaptParam),
-  };
-}
-
-function buildFallback(): { specs: OperationSpecDTO[]; palette: Palette } {
-  const specs: OperationSpecDTO[] = [];
-  const palette: Palette = {};
-
-  const basic: Record<string, string[]> = {};
-  Object.entries(BASIC_GROUPS).forEach(([sub, labels]) => {
-    basic[sub] = [];
-    labels.forEach((label) => {
-      const cfg = DEFAULT_OPERATION_CONFIGS[label];
-      if (cfg) {
-        specs.push(adaptConfig(label, 'Basic', sub, cfg));
-        basic[sub].push(label);
-      }
-    });
-  });
-  palette['Basic Operations'] = basic;
-
-  const addNested = (lib: string, configs: Record<string, Record<string, OperationConfig>>) => {
-    const group: Record<string, string[]> = {};
-    Object.entries(configs).forEach(([cat, ops]) => {
-      group[cat] = [];
-      Object.entries(ops).forEach(([label, cfg]) => {
-        specs.push(adaptConfig(label, lib, cat, cfg));
-        group[cat].push(label);
-      });
-    });
-    palette[lib] = group;
-  };
-  addNested('OpenCV', OPENCV_OPERATION_CONFIGS);
-  addNested('Scikit-Image', SCIKIT_OPERATION_CONFIGS);
-
-  return { specs, palette };
-}
 
 function buildFromSchema(schema: OperationSchema): { specs: OperationSpecDTO[]; palette: Palette } {
   const specs: OperationSpecDTO[] = [];
@@ -141,6 +42,11 @@ function buildFromSchema(schema: OperationSchema): { specs: OperationSpecDTO[]; 
 
 const Ctx = createContext<OperationSchemaContextValue | null>(null);
 
+/**
+ * Fetches the operation schema once at startup and is the single source of
+ * truth for the operation palette and parameter metadata. While loading (or on
+ * error) the palette is empty and consumers render a loading/error state.
+ */
 export const OperationSchemaProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [schema, setSchema] = useState<OperationSchema | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,8 +73,10 @@ export const OperationSchemaProvider: React.FC<{ children: React.ReactNode }> = 
   }, []);
 
   const value = useMemo<OperationSchemaContextValue>(() => {
-    const usingFallback = !schema || !schema.categories?.length;
-    const { specs, palette } = usingFallback ? buildFallback() : buildFromSchema(schema as OperationSchema);
+    const { specs, palette } =
+      schema && schema.categories?.length
+        ? buildFromSchema(schema)
+        : { specs: [] as OperationSpecDTO[], palette: {} as Palette };
 
     const index = new Map<string, OperationSpecDTO>();
     specs.forEach((s) => {
@@ -185,15 +93,7 @@ export const OperationSchemaProvider: React.FC<{ children: React.ReactNode }> = 
       return out;
     };
 
-    return {
-      loading,
-      error,
-      usingFallback,
-      getOp,
-      getDefaults,
-      palette,
-      allLabels: specs.map((s) => s.label),
-    };
+    return { loading, error, getOp, getDefaults, palette, allLabels: specs.map((s) => s.label) };
   }, [schema, loading, error]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
