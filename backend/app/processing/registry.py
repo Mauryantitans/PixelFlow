@@ -120,4 +120,4 @@ def ensure_registered() -> None:
     global _bootstrapped
     if not _bootstrapped:
         _bootstrapped = True
-        from .operations import _builtins  # noqa: F401  (registers operations on import)
+        from .operations import _builtins, interactive  # noqa: F401  (register on import)

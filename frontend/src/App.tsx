@@ -11,10 +11,7 @@ import {
 } from './hooks';
 import { usePipelineContext } from './contexts/PipelineContext';
 import { useOperationSchema } from './contexts/OperationSchemaContext';
-import {
-  ProcessedResult,
-  StepErrorDTO
-} from './types';
+import { ProcessedResult } from './types';
 import PipelineStepComponent from './components/PipelineStep';
 import ResultsGridComponent from './components/ResultsGrid';
 import Inspector from './components/Inspector';

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { PipelineProvider } from './contexts/PipelineContext';
+import { PickerProvider } from './contexts/PickerContext';
 import { AuthPage } from './components/AuthPage';
 import { LandingPage } from './components/LandingPage';
 import { Header } from './components/Header';
@@ -30,10 +31,12 @@ const AppRoutes: React.FC = () => {
             <Route
               path="/app"
               element={
-                <div className="min-h-screen">
-                  <Header />
-                  <App />
-                </div>
+                <PickerProvider>
+                  <div className="min-h-screen">
+                    <Header />
+                    <App />
+                  </div>
+                </PickerProvider>
               }
             />
             

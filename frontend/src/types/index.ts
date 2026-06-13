@@ -169,7 +169,7 @@ export interface UIState {
   sidebarCollapsed: boolean;
   liveProcessingEnabled: boolean;
   currentView: 'grid' | 'inspector' | 'live';
-  inspectorView: 'normal' | 'side-by-side' | 'slider';
+  inspectorView: 'normal' | 'side-by-side' | 'slider' | 'diff';
   selectedImages: string[];
   selectedResult: ProcessedResult | null;
   viewingStepIndex: number; // -1 for final result

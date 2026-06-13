@@ -38,5 +38,6 @@ def test_operations_returns_full_schema():
 def test_operations_keeps_legacy_list_for_compat():
     body = _call()
     assert "Gaussian Blur" in body["operations"]
-    assert body["total_count"] == 53
-    assert len(body["operations"]) == 53
+    assert "Flood Fill" in body["operations"]
+    assert body["total_count"] == 55
+    assert len(body["operations"]) == 55

@@ -101,6 +101,7 @@ const PipelineStepComponent: React.FC<PipelineStepProps> = ({
                 <ParamControl
                   spec={param}
                   value={step.params[param.name]}
+                  stepId={step.id}
                   onChange={(v) => onParameterChange(step.id, param.name, v)}
                 />
               </div>

@@ -1,13 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as LucideReact from 'lucide-react';
 import { ProcessedResult } from '../types';
 import { downloadImage, downloadAllIntermediates } from '../utils/download';
 import { ImageAnalytics } from './ImageAnalytics';
+import PreviewCanvas from './PreviewCanvas';
+import CompareSlider from './CompareSlider';
+import DiffView from './DiffView';
+
+type InspectorView = 'normal' | 'side-by-side' | 'slider' | 'diff';
 
 interface InspectorProps {
   result: ProcessedResult;
-  view: 'normal' | 'side-by-side' | 'slider';
-  onViewChange: (view: 'normal' | 'side-by-side' | 'slider') => void;
+  view: InspectorView;
+  onViewChange: (view: InspectorView) => void;
   onBack: () => void;
 }
 
@@ -56,6 +61,29 @@ const Inspector: React.FC<InspectorProps> = ({
   const hasIntermediates = result.intermediateResults && result.intermediateResults.length > 0;
   const totalSteps = hasIntermediates ? (result.intermediateResults?.length || 0) : 0;
   const maxStepIndex = totalSteps - 1;
+
+  // Comparison stages: Original + each pipeline step (last = final).
+  const stages = useMemo(() => {
+    const list: { label: string; url: string }[] = [{ label: 'Original', url: result.originalUrl }];
+    const inter = result.intermediateResults ?? [];
+    if (inter.length > 0) {
+      inter.forEach((url, i) =>
+        list.push({ label: i === inter.length - 1 ? `Final (Step ${i + 1})` : `Step ${i + 1}`, url })
+      );
+    } else {
+      list.push({ label: 'Final', url: result.processedUrl });
+    }
+    return list;
+  }, [result]);
+
+  const [stageA, setStageA] = useState(0);
+  const [stageB, setStageB] = useState(1);
+  useEffect(() => {
+    setStageA(0);
+    setStageB(Math.max(1, stages.length - 1));
+  }, [result.id, stages.length]);
+
+  const getStageUrl = (idx: number) => stages[idx]?.url ?? result.processedUrl;
 
   const getCurrentImageUrl = () => {
     if (currentStepIndex === -1) {
@@ -116,8 +144,8 @@ const Inspector: React.FC<InspectorProps> = ({
             <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Inspector</h3>
           </div>
           
-          {/* Step Navigation - Center */}
-          {hasIntermediates && view !== 'side-by-side' && (
+          {/* Step Navigation - Center (normal view only) */}
+          {hasIntermediates && view === 'normal' && (
             <div className="flex items-center space-x-3 bg-gray-100 dark:bg-zinc-800 px-4 py-2 rounded-lg">
               <button
                 onClick={handlePreviousStep}
@@ -159,7 +187,21 @@ const Inspector: React.FC<InspectorProps> = ({
             >
               <LucideReact.Columns className="w-5 h-5" />
             </button>
-            
+            <button
+              onClick={() => onViewChange('slider')}
+              className={`btn-sm ${view === 'slider' ? 'active' : ''}`}
+              title="Before/After slider"
+            >
+              <LucideReact.SlidersHorizontal className="w-5 h-5" />
+            </button>
+            <button
+              onClick={() => onViewChange('diff')}
+              className={`btn-sm ${view === 'diff' ? 'active' : ''}`}
+              title="Difference / overlay"
+            >
+              <LucideReact.Layers className="w-5 h-5" />
+            </button>
+
             <div className="w-px h-6 bg-gray-300 dark:bg-zinc-700"></div>
             
             {/* Action Buttons */}
@@ -192,75 +234,87 @@ const Inspector: React.FC<InspectorProps> = ({
         </div>
 
         {/* Content */}
-        <div className="flex-1 p-4">
-          {view === 'normal' && (
-            <div className="w-full h-full flex flex-col items-center justify-center">
-              <img
-                src={getCurrentImageUrl()}
-                alt={getStepLabel()}
-                className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
-              />
-              
-              {/* Step indicator below image */}
-              {hasIntermediates && (
-                <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-                  {getStepLabel()}
-                </div>
-              )}
+        <div className="flex-1 p-4 flex flex-col min-h-0">
+          {/* A/B stage selectors for the comparison views */}
+          {view !== 'normal' && (
+            <div className="flex items-center justify-center gap-4 mb-3 text-sm">
+              <label className="flex items-center gap-1 text-gray-700 dark:text-gray-300">
+                A:
+                <select
+                  value={stageA}
+                  onChange={(e) => setStageA(Number(e.target.value))}
+                  className="param-select"
+                >
+                  {stages.map((s, i) => (
+                    <option key={i} value={i}>{s.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex items-center gap-1 text-gray-700 dark:text-gray-300">
+                B:
+                <select
+                  value={stageB}
+                  onChange={(e) => setStageB(Number(e.target.value))}
+                  className="param-select"
+                >
+                  {stages.map((s, i) => (
+                    <option key={i} value={i}>{s.label}</option>
+                  ))}
+                </select>
+              </label>
             </div>
           )}
 
-          {view === 'side-by-side' && (
-            <div className="w-full h-full grid grid-cols-2 gap-4">
-              <div className="flex flex-col">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Original</h4>
-                  <button
-                    onClick={() => {
-                      setAnalyticsImageUrl(result.originalUrl);
-                      setAnalyticsImageName('Original');
-                      setShowAnalytics(true);
-                    }}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1"
-                  >
-                    <LucideReact.BarChart3 size={12} />
-                    <span>Analytics</span>
-                  </button>
-                </div>
-                <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-zinc-800/50 rounded-lg">
-                  <img
-                    src={result.originalUrl}
-                    alt="Original"
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
-                  />
-                </div>
+          <div className="flex-1 min-h-0">
+            {view === 'normal' && (
+              <div className="w-full h-full flex flex-col items-center justify-center">
+                <PreviewCanvas
+                  src={getCurrentImageUrl()}
+                  alt={getStepLabel()}
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                />
+                {hasIntermediates && (
+                  <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">{getStepLabel()}</div>
+                )}
               </div>
-              
-              <div className="flex flex-col">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-sm font-bold text-zinc-900 dark:text-white">Processed</h4>
-                  <button
-                    onClick={() => {
-                      setAnalyticsImageUrl(result.processedUrl);
-                      setAnalyticsImageName('Processed');
-                      setShowAnalytics(true);
-                    }}
-                    className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center space-x-1"
-                  >
-                    <LucideReact.BarChart3 size={12} />
-                    <span>Analytics</span>
-                  </button>
-                </div>
-                <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-zinc-800/50 rounded-lg">
-                  <img
-                    src={result.processedUrl}
-                    alt="Processed"
-                    className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
-                  />
-                </div>
+            )}
+
+            {view === 'side-by-side' && (
+              <div className="w-full h-full grid grid-cols-2 gap-4">
+                {[stageA, stageB].map((idx, k) => (
+                  <div key={k} className="flex flex-col min-h-0">
+                    <h4 className="text-sm font-bold text-zinc-900 dark:text-white mb-2 text-center">
+                      {stages[idx]?.label}
+                    </h4>
+                    <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-zinc-800/50 rounded-lg p-2">
+                      <img
+                        src={getStageUrl(idx)}
+                        alt={stages[idx]?.label}
+                        className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
-          )}
+            )}
+
+            {view === 'slider' && (
+              <div className="w-full h-full flex items-center justify-center">
+                <CompareSlider
+                  beforeSrc={getStageUrl(stageA)}
+                  afterSrc={getStageUrl(stageB)}
+                  beforeLabel={stages[stageA]?.label}
+                  afterLabel={stages[stageB]?.label}
+                />
+              </div>
+            )}
+
+            {view === 'diff' && (
+              <div className="w-full h-full flex items-center justify-center">
+                <DiffView aSrc={getStageUrl(stageA)} bSrc={getStageUrl(stageB)} />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

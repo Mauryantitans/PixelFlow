@@ -1,18 +1,32 @@
 import React from 'react';
+import * as LucideReact from 'lucide-react';
 import { ParamSpecDTO } from '../../types';
+import { usePicker } from '../../contexts/PickerContext';
 
 interface ParamControlProps {
   spec: ParamSpecDTO;
   value: any;
+  stepId: string;
   onChange: (value: any) => void;
+}
+
+function summarize(type: string, value: any): string {
+  if (value === null || value === undefined) return 'not set';
+  if (type === 'point') return `(${(+value.x).toFixed(2)}, ${(+value.y).toFixed(2)})`;
+  if (type === 'points') return `${Array.isArray(value) ? value.length : 0} point(s)`;
+  if (type === 'rect')
+    return `x ${(+value.x).toFixed(2)}, y ${(+value.y).toFixed(2)}, w ${(+value.w).toFixed(2)}, h ${(+value.h).toFixed(2)}`;
+  return String(value);
 }
 
 /**
  * Renders the right input control for a single operation parameter, driven by
- * the param's declared `type` from the backend schema. `strict` TS keeps this
- * switch exhaustive as new param types are added.
+ * the param's declared `type` from the backend schema.
  */
-const ParamControl: React.FC<ParamControlProps> = ({ spec, value, onChange }) => {
+const ParamControl: React.FC<ParamControlProps> = ({ spec, value, stepId, onChange }) => {
+  const { arm, isArmed } = usePicker();
+  const armed = isArmed(stepId, spec.name);
+
   switch (spec.type) {
     case 'int':
     case 'odd_kernel':
@@ -80,18 +94,60 @@ const ParamControl: React.FC<ParamControlProps> = ({ spec, value, onChange }) =>
             className="h-7 w-10 rounded border border-gray-300 dark:border-zinc-600 bg-transparent cursor-pointer"
           />
           <span className="text-xs font-mono text-gray-600 dark:text-gray-300">{hex}</span>
+          <button
+            type="button"
+            onClick={() => arm({ stepId, paramName: spec.name, type: 'color' })}
+            className={`ml-auto flex items-center gap-1 text-xs px-2 py-1 rounded border ${
+              armed
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-gray-300 dark:border-zinc-600 text-gray-600 dark:text-gray-300'
+            }`}
+            title="Pick a color from the image"
+          >
+            <LucideReact.Pipette className="w-3.5 h-3.5" />
+            {armed ? 'Click image…' : 'Eyedropper'}
+          </button>
         </div>
       );
     }
 
-    // Interactive image-coordinate inputs: the picking UI (click / drag on the
-    // preview) arrives with the Phase 4 PreviewCanvas. For now show status.
+    // Interactive image-coordinate inputs: arm the PreviewCanvas picker.
     case 'point':
     case 'points':
     case 'rect':
       return (
-        <div className="text-xs italic text-gray-500 dark:text-gray-400">
-          {value ? 'Set on image ✓' : 'Pick on the image (interactive picking coming soon)'}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => arm({ stepId, paramName: spec.name, type: spec.type })}
+            className={`flex items-center gap-1 text-xs px-2 py-1 rounded border ${
+              armed
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400 animate-pulse'
+                : 'border-gray-300 dark:border-zinc-600 text-gray-600 dark:text-gray-300'
+            }`}
+          >
+            <LucideReact.Crosshair className="w-3.5 h-3.5" />
+            {armed
+              ? spec.type === 'rect'
+                ? 'Drag on image…'
+                : 'Click image…'
+              : value
+              ? 'Re-pick'
+              : 'Pick on image'}
+          </button>
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+            {summarize(spec.type, value)}
+          </span>
+          {value && (
+            <button
+              type="button"
+              onClick={() => onChange(null)}
+              className="text-gray-400 hover:text-red-500"
+              title="Clear"
+            >
+              <LucideReact.X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       );
 
