@@ -14,9 +14,6 @@ VERSION=1.0.0
 HOST=0.0.0.0
 PORT=10000
 
-# Image Storage
-IMAGE_STORAGE=database
-
 # Database Settings
 USE_SQLITE=False
 DATABASE_URL=<YOUR_POSTGRES_URL_FROM_RENDER>
@@ -82,9 +79,6 @@ VERSION=1.0.0
 HOST=0.0.0.0
 PORT=8000
 
-# Image Storage (use filesystem for local dev)
-IMAGE_STORAGE=filesystem
-
 # Database Settings (use SQLite for local dev)
 USE_SQLITE=True
 
@@ -118,7 +112,6 @@ REACT_APP_API_URL=http://localhost:8000/api
 - [ ] NEW SECRET_KEY generated (never use dev key!)
 - [ ] DATABASE_URL from Render PostgreSQL
 - [ ] USE_SQLITE set to False
-- [ ] IMAGE_STORAGE set to database
 - [ ] ALLOWED_ORIGINS includes localhost for testing
 
 ### After Frontend Deployment

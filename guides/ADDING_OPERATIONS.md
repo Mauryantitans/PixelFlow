@@ -4,7 +4,38 @@ Learn how to extend PixelFlow with your own image processing operations.
 
 ---
 
-## 🎯 **Overview**
+> ## ⚠️ This guide is being updated
+>
+> Operations are now defined **entirely in the backend** by a declarative registry —
+> there are **no frontend config files to edit** (the old `types/index.ts`
+> `*_OPERATION_CONFIGS` were removed). The UI renders each operation's controls
+> dynamically from its parameter schema served by `GET /api/processing/operations`.
+>
+> **To add an operation today:**
+> 1. Write a function `fn(image: PIL.Image, **params) -> PIL.Image` (see
+>    `backend/app/processing/operations/extras.py` for examples).
+> 2. Register it with typed params:
+>    ```python
+>    from app.processing.registry import OperationSpec, registry
+>    from app.processing.param_specs import IntParam, EnumParam, BoolParam, ColorParam, PointParam, RectParam
+>
+>    registry.register(OperationSpec(
+>        id="my_op", label="My Op", category="Basic", subcategory="Effects",
+>        description="…", fn=my_fn,
+>        params=[IntParam(name="amount", label="Amount", default=0, min=-100, max=100)],
+>    ))
+>    ```
+>    (import your module in `registry.ensure_registered`).
+>
+> Param types: `int`, `float`, `odd_kernel`, `angle`, `enum`, `bool`, `color`, and the
+> image-coordinate types `point` / `points` / `rect` (picked on the preview). The
+> executor validates/coerces params and maps normalized coordinates to pixels; the UI
+> needs **no changes**. The step-by-step below is the older two-file approach and is
+> retained only for historical context.
+
+---
+
+## 🎯 **Overview (legacy approach — superseded by the registry above)**
 
 PixelFlow makes it easy to add new operations. You only need to:
 

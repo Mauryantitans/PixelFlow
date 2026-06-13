@@ -51,18 +51,12 @@ Experience PixelFlow without any setup required!
 
 **🔗 Live Demo:** [https://pixel-flow-woad.vercel.app](https://pixel-flow-woad.vercel.app)
 
-### Demo Admin Credentials
+Register a free account in the app to try the pipeline builder. To explore the
+admin features locally, create your own admin account — see [Quick Start](#-quick-start)
+(set `ADMIN_EMAIL` / `ADMIN_PASSWORD` and the admin sets their own panel PIN on first use).
 
-For testing admin features, use these credentials:
-
-```
-Email: admin@pixelflow.com
-Password: StrongPassword123
-```
-
-**Admin Panel PIN:** `1234`
-
-> ⚠️ **Note for Local Development:** These are demo credentials for the deployed version only. When running locally, you'll need to create your own admin account using the instructions in the [Quick Start](#-quick-start) section.
+> Admin credentials are never published here; provision your own via the
+> `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables.
 
 ---
 
@@ -104,7 +98,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete list of changes.
 - **Dual Processing Modes**:
   - **Live Mode**: Instant single-image processing with real-time preview
   - **Batch Mode**: Efficient multi-image processing with progress tracking
-- **50+ Operations**: Industry-standard algorithms from OpenCV and Scikit-Image
+- **77 Operations**: Industry-standard algorithms from OpenCV, Scikit-Image and PIL, served from a declarative backend registry (the UI renders each operation's controls dynamically from its schema)
 - **Hierarchical Organization**: Logical categorization by library and operation type
 
 ### Advanced Features
@@ -337,7 +331,7 @@ pixelflow/
    - Images stored in database and persist across sessions
 
 3. **Build Pipeline**
-   - Browse 50+ operations
+   - Browse 77 operations
    - Add to pipeline and adjust parameters
    - Save pipeline for reuse
 
@@ -413,29 +407,23 @@ For complete API documentation, see:
 
 ## 🎨 Operations Library
 
-PixelFlow provides **50+ professional-grade operations** organized into three libraries:
+PixelFlow ships **77 operations** across Basic, OpenCV and Scikit-Image libraries. The
+live list is served from the backend registry (`GET /api/processing/operations`) and the UI
+renders each operation's controls dynamically from its schema, so the in-app palette is
+always the source of truth. Highlights:
 
-### Basic Operations (13 operations)
-- **Adjustments**: Brightness, Contrast, Saturation, Exposure
-- **Filters**: Grayscale, Sepia, Invert, Solarize, Posterize
-- **Blur & Sharpen**: Gaussian Blur, Sharpen
-- **Effects**: Vignette, Grain
+- **Adjustments & tone**: Brightness, Contrast, Saturation, Exposure, Gamma, Hue Rotate, Temperature, Detail Enhance
+- **Filters & blur**: Gaussian / Median / Box / Bilateral, Non-Local Means, Motion Blur, TV & Wavelet denoise
+- **Edges & features**: Canny, Sobel, Scharr, Laplacian, Prewitt, FAST corners, ORB, Harris
+- **Morphology & segmentation**: Open / Close / Dilate / Erode / Gradient / Top-Hat / Black-Hat, Skeletonize, Otsu / Adaptive / Triangle thresholding, Watershed, SLIC
+- **Stylize & effects**: Sepia, Posterize, Solarize, Vignette, Grain, Emboss, Pixelate, Cartoon, Pencil / Color Sketch, Stylization, Duotone
+- **Color spaces & geometry**: RGB ↔ HSV / LAB / YUV, Resize, Rotate, Flip, Crop
+- **Interactive (pick on the image)**: Flood Fill (click a seed point), Crop & Inpaint Region (drag a region), eyedropper colors
 
-### OpenCV Operations (25+ operations)
-- **Filtering**: Bilateral, Median, Box, Non-Local Means
-- **Morphological**: Opening, Closing, Dilation, Erosion, Gradient, Top Hat, Black Hat
-- **Edge Detection**: Canny, Sobel, Scharr, Laplacian
-- **Color Spaces**: HSV, LAB, YUV conversions
-- **Geometric**: Resize, Rotation, Flip
-- **Feature Detection**: FAST Corners, ORB Features
-
-### Scikit-Image Operations (15+ operations)
-- **Enhancement**: Histogram Equalization, CLAHE, Gamma Correction, Contrast Stretching
-- **Filters**: Gaussian, Frangi, Hessian, Farid
-- **Restoration**: Wavelet Denoising, Unsharp Mask
-- **Segmentation**: Otsu, Adaptive Thresholding, Watershed, SLIC Superpixels
-
-For operation details and parameters, see [guides/ADDING_OPERATIONS.md](guides/ADDING_OPERATIONS.md)
+Operations carry **typed parameters** — scalars, enums, booleans, angles, colors, and
+image-coordinate inputs (points / regions) picked directly on the preview. Adding a new
+operation is ~10 lines (register a function with its param schema; the UI adapts
+automatically) — see [guides/ADDING_OPERATIONS.md](guides/ADDING_OPERATIONS.md).
 
 ---
 
@@ -456,7 +444,6 @@ SECRET_KEY=your-secret-key-here
 GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-client-secret
 ALLOWED_ORIGINS=https://your-frontend.vercel.app
-IMAGE_STORAGE=database
 ADMIN_EMAIL=admin@example.com      # Optional: Auto-create first admin
 ADMIN_PASSWORD=YourStrongPassword   # Optional: Auto-create first admin
 ADMIN_USERNAME=admin                # Optional: Default is 'admin'
