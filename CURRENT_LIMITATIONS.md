@@ -49,9 +49,11 @@ below are now resolved (marked ✅ inline).
 - Storage-quota-of-0 divide-by-zero guarded; zero-byte uploads rejected with a clean 400.
 - PNG transparency preserved on upload; DB-mode batch upload (`/images/upload-multiple`) added.
 
+**httpOnly-cookie auth + CSRF** shipped after the initial 1.2.0 cut (see #23).
+
 **Reserved / not yet enforced** (deliberate follow-ups): `delete_oldest_on_quota`,
 `cleanup_on_tab_close`, server-side `max_images_per_upload`, downscale-on-drag preview,
-**httpOnly-cookie auth**, and **Redis** multi-instance rate limiting.
+and **Redis** multi-instance rate limiting.
 
 ---
 
@@ -671,28 +673,27 @@ Local development runs on HTTP (localhost).
 
 ---
 
-### 23. **Session Tokens in LocalStorage**
+### 23. **Auth Tokens** — ✅ RESOLVED (1.2.0): httpOnly cookies
 
-**Severity:** Security Consideration
+**Status:** ✅ Implemented
 
-**Description:**
-JWT tokens stored in `localStorage` instead of `httpOnly` cookies.
+JWTs are now delivered as **httpOnly cookies** (set by the backend), never readable by
+JavaScript — so an XSS bug can't exfiltrate the session.
 
-**Security Implication:**
-- Vulnerable to XSS attacks (though unlikely)
-- Token accessible via JavaScript
-- Not as secure as httpOnly cookies
+**Implemented:**
+- ✅ `pf_access` (httpOnly, Path=/) and `pf_refresh` (httpOnly, Path=/api/auth) cookies;
+  tokens are no longer returned in response bodies or stored in `localStorage`
+- ✅ **CSRF protection** — double-submit cookie: a non-httpOnly `pf_csrf` cookie is echoed
+  back in the `X-CSRF-Token` header on state-changing requests and verified server-side
+  (`middleware/csrf.py`)
+- ✅ **Refresh-token rotation** + DB revocation on logout (now also for Google OAuth logins)
+- ✅ Cookie attributes are env-driven (`COOKIE_SECURE`/`COOKIE_SAMESITE`/`COOKIE_DOMAIN`)
+- ✅ Guest `session_id` is now a `crypto.randomUUID()` (was a guessable timestamp+random)
 
-**Why This Choice:**
-- Simpler implementation
-- Works well with frontend architecture
-- Acceptable for internal tools
-- XSS risk mitigated by React
-
-**Best Practice Would Be:**
-- httpOnly cookies for tokens
-- Separate auth service
-- Refresh token rotation
+**Deployment note:** because the demo is split across Vercel (frontend) and Render
+(backend), the API is served **same-origin** via a Vercel rewrite (`/api/*` → backend) so
+cookies are first-party (`SameSite=Lax`, works in every browser). See
+[deployment/DEPLOYMENT_GUIDE.md](deployment/DEPLOYMENT_GUIDE.md).
 
 ---
 
@@ -1217,12 +1218,12 @@ Images served directly from backend, not via CDN.
 - Backend operation registry + schema-driven UI + interactive (point/ROI/color) inputs
 - Incremental live-preview engine (prefix cache + request cancellation)
 - Rate limiting on upload/processing (per-IP)
+- **httpOnly-cookie auth + CSRF protection + token rotation/revocation (#23)**
 
 ### **High Priority (next)**
-1. httpOnly-cookie auth (move JWT out of localStorage) (#23)
-2. Background cleanup jobs / scheduler (#4)
-3. Batch download as ZIP (#10)
-4. Admin panel PIN persistence (#16)
+1. Background cleanup jobs / scheduler (#4)
+2. Batch download as ZIP (#10)
+3. Admin panel PIN persistence (#16)
 5. Mobile warning message / responsiveness (#1)
 
 ### **Medium Priority**

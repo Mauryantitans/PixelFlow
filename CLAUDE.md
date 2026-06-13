@@ -75,8 +75,14 @@ Pipelines are ordered lists of `{name, params}` steps. `ImageProcessor.apply_ope
 ### Sessions & heartbeat
 Frontend sends periodic heartbeats (`/api/images/heartbeat`); a session is "active" if seen in the last ~5 min. The backend cleanup task (started in `main.py` lifespan) expires stale sessions and their images using the retention/lifetime values from the DB `SystemSettings` row. On page unload the frontend fires a `sendBeacon` cleanup.
 
-### Auth
-JWT access + refresh tokens (`python-jose`, bcrypt via `passlib`), currently stored in `localStorage` (moving to httpOnly cookies is planned — see `CURRENT_LIMITATIONS.md`). Optional Google OAuth (`authlib`) gated on `GOOGLE_CLIENT_ID`/`SECRET`. First admin is auto-created on startup from `ADMIN_EMAIL`/`ADMIN_PASSWORD` env vars if no admin exists. The admin panel is additionally gated behind a client-side PIN.
+### Auth (httpOnly cookies + CSRF)
+JWT access + refresh tokens (`python-jose`, bcrypt via `passlib`) are delivered as **httpOnly cookies**, never in response bodies or `localStorage`:
+- `set_auth_cookies`/`clear_auth_cookies` in `utils/auth.py` set `pf_access` (httpOnly, Path=/), `pf_refresh` (httpOnly, Path=/api/auth), and a non-httpOnly `pf_csrf`. `get_current_user`/`_optional` read the token from the `pf_access` cookie or, for non-browser clients, an `Authorization: Bearer` header.
+- **CSRF**: `middleware/csrf.py` enforces a double-submit cookie — cookie-authenticated unsafe requests (POST/PUT/DELETE/PATCH under `/api`) must send `X-CSRF-Token` matching the `pf_csrf` cookie. Exempt: login/register/oauth (no session yet) and the session-id-keyed `heartbeat`/`cleanup-session` (reached via fetch/beacon). The frontend echoes the cookie via axios request interceptors (`services/api.ts`, `services/auth.ts`).
+- `/auth/login` and the OAuth callback set the cookies and return only the user; `/auth/refresh` reads the refresh cookie, **rotates** it (DB-backed `RefreshToken`, hashed), and re-sets cookies; `/auth/logout` clears cookies and revokes refresh tokens. Tokens carry a random `jti` so they're always unique.
+- Cookie attributes are env-driven: `COOKIE_SECURE` (default on in prod), `COOKIE_SAMESITE` (default `lax`), `COOKIE_DOMAIN`. **In production the frontend must be same-origin with the API** (a Vercel rewrite proxies `/api/*` → the Render backend; set `REACT_APP_API_URL=/api`) so cookies are first-party — see `frontend/vercel.json` and `deployment/DEPLOYMENT_GUIDE.md`.
+
+Optional Google OAuth (`authlib`) gated on `GOOGLE_CLIENT_ID`/`SECRET`. First admin is auto-created on startup from `ADMIN_EMAIL`/`ADMIN_PASSWORD` if no admin exists. The admin panel is additionally gated behind a client-side PIN.
 
 ## Configuration notes
 - Backend env lives in `backend/.env` (template: `backend/.env.example`). Key vars: `DATABASE_URL`, `SECRET_KEY`, `USE_SQLITE`, `DEBUG`, `ALLOWED_ORIGINS`, `ALLOWED_ORIGINS_REGEX` (for Vercel preview URLs), `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI`, `ADMIN_*`. Full list in [deployment/ENVIRONMENT_VARIABLES.md](deployment/ENVIRONMENT_VARIABLES.md). (Note: the old `IMAGE_STORAGE` switch was removed — images are always stored in the database.)

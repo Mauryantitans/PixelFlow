@@ -31,6 +31,15 @@ ALLOWED_ORIGINS=https://your-app.vercel.app,http://localhost:3000
 # Vercel preview-deployment regex (update prefix to match your project name)
 ALLOWED_ORIGINS_REGEX=https://your-app(-[a-z0-9]+)*\.vercel\.app
 
+# Auth cookies (httpOnly cookie-based auth)
+# With the same-origin proxy (recommended), keep SameSite=lax. Secure defaults to
+# on in production. Only set COOKIE_SAMESITE=none (requires Secure) if you serve the
+# API cross-site without the proxy — note third-party cookies are blocked in Safari
+# and being phased out in Chrome.
+COOKIE_SECURE=True
+COOKIE_SAMESITE=lax
+# COOKIE_DOMAIN=          # optional; only if sharing cookies across subdomains
+
 # Google OAuth (Optional - if using OAuth)
 # GOOGLE_CLIENT_ID=your-client-id
 # GOOGLE_CLIENT_SECRET=your-client-secret
@@ -53,14 +62,21 @@ Copy the output and paste as SECRET_KEY value.
 Add these in Vercel Dashboard → Project → Settings → Environment Variables
 
 ```bash
-# API URL - Update with your Render backend URL
-REACT_APP_API_URL=https://your-backend.onrender.com/api
+# API URL — with the same-origin proxy (recommended for httpOnly cookies), use a
+# RELATIVE path so the API is first-party. The Vercel rewrite in frontend/vercel.json
+# proxies /api/* to your Render backend (edit that file's destination host).
+REACT_APP_API_URL=/api
+
+# (Only if you are NOT using the proxy — direct cross-site calls; note this makes
+#  cookies third-party and unreliable in Safari/Chrome:)
+# REACT_APP_API_URL=https://your-backend.onrender.com/api
 ```
 
 **Important Notes:**
 - Variable MUST start with `REACT_APP_` for Create React App
-- Use your actual Render backend URL
-- Don't include trailing slash
+- The same-origin proxy keeps auth cookies first-party (SameSite=Lax) — set the rewrite
+  destination in `frontend/vercel.json` to your Render backend URL
+- Don't include a trailing slash
 - Must redeploy after adding/changing variables
 
 ---

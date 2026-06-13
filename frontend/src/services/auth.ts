@@ -1,50 +1,35 @@
 import axios from 'axios';
 import {
   User,
-  LoginRequest,
   RegisterRequest,
-  AuthResponse,
   SavedPipeline,
   CreatePipelineRequest
 } from '../types';
+import { getCookie } from './api';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
-// Token management
-const TOKEN_KEY = 'pixelflow_access_token';
-const REFRESH_TOKEN_KEY = 'pixelflow_refresh_token';
+// Auth is cookie-based (httpOnly): tokens live in cookies set by the backend and
+// are never readable by JS. Send credentials on every request and echo the CSRF
+// cookie back as a header on state-changing requests (double-submit-cookie).
+axios.defaults.withCredentials = true;
+
+const UNSAFE_METHODS = ['post', 'put', 'delete', 'patch'];
+axios.interceptors.request.use((config) => {
+  if (config.method && UNSAFE_METHODS.includes(config.method.toLowerCase())) {
+    const csrf = getCookie('pf_csrf');
+    if (csrf) {
+      config.headers = config.headers ?? {};
+      (config.headers as any)['X-CSRF-Token'] = csrf;
+    }
+  }
+  return config;
+});
 
 export const authService = {
-  // Store tokens in localStorage
-  setTokens(accessToken: string, refreshToken: string) {
-    localStorage.setItem(TOKEN_KEY, accessToken);
-    localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
-  },
-
-  // Get access token
-  getAccessToken(): string | null {
-    return localStorage.getItem(TOKEN_KEY);
-  },
-
-  // Get refresh token
-  getRefreshToken(): string | null {
-    return localStorage.getItem(REFRESH_TOKEN_KEY);
-  },
-
-  // Remove tokens
-  clearTokens() {
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
-  },
-
-  // Check if user is authenticated
-  isAuthenticated(): boolean {
-    return !!this.getAccessToken();
-  },
-
-  // Login
-  async login(email: string, password: string): Promise<AuthResponse> {
-    const response = await axios.post<AuthResponse>(`${API_BASE_URL}/auth/login`, {
+  // Login — backend sets httpOnly cookies and returns the user record.
+  async login(email: string, password: string): Promise<User> {
+    const response = await axios.post<User>(`${API_BASE_URL}/auth/login`, {
       email,
       password,
     });
@@ -57,101 +42,48 @@ export const authService = {
     return response.data;
   },
 
-  // Get current user
+  // Get current user (auth cookie sent automatically). Throws if not authenticated.
   async getCurrentUser(): Promise<User> {
-    const token = this.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
-    const response = await axios.get<User>(`${API_BASE_URL}/auth/me`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await axios.get<User>(`${API_BASE_URL}/auth/me`);
     return response.data;
   },
 
   // Update user profile
   async updateProfile(data: Partial<User>): Promise<User> {
-    const token = this.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
-    const response = await axios.put<User>(`${API_BASE_URL}/auth/me`, data, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await axios.put<User>(`${API_BASE_URL}/auth/me`, data);
     return response.data;
   },
 
-  // Silently exchange a refresh token for a new access + refresh token pair.
+  // Silently rotate tokens using the httpOnly refresh cookie.
   // Returns true on success, false if the refresh token is invalid/expired.
   async refreshTokens(): Promise<boolean> {
-    const refreshToken = this.getRefreshToken();
-    if (!refreshToken) return false;
-
     try {
-      const formData = new FormData();
-      formData.append('refresh_token', refreshToken);
-
-      const response = await axios.post<AuthResponse>(
-        `${API_BASE_URL}/auth/refresh`,
-        formData,
-      );
-
-      this.setTokens(response.data.access_token, response.data.refresh_token);
+      await axios.post(`${API_BASE_URL}/auth/refresh`, {});
       return true;
     } catch {
-      this.clearTokens();
       return false;
     }
   },
 
-  // Logout and cleanup user data
+  // Logout: backend clears the cookies and cleans up session data.
   async logout(sessionId: string) {
-    const token = this.getAccessToken();
-    
-    if (token && sessionId) {
-      try {
-        // Call backend logout to cleanup user data
-        const formData = new FormData();
-        formData.append('session_id', sessionId);
-        
-        await axios.post(`${API_BASE_URL}/auth/logout`, formData, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-        
-      } catch (error) {
-        console.error('Logout cleanup error:', error);
-        // Continue with client-side logout even if backend fails
-      }
+    try {
+      const formData = new FormData();
+      if (sessionId) formData.append('session_id', sessionId);
+      await axios.post(`${API_BASE_URL}/auth/logout`, formData);
+    } catch (error) {
+      console.error('Logout cleanup error:', error);
+      // Continue with client-side logout even if backend fails
     }
-    
-    this.clearTokens();
   },
 };
 
-// Pipeline service
+// Pipeline service — auth travels in the httpOnly cookie (withCredentials default).
 export const pipelineService = {
   // Get user's pipelines
   async getUserPipelines(category?: string): Promise<SavedPipeline[]> {
-    const token = authService.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
     const params = category ? { category } : {};
-    const response = await axios.get<SavedPipeline[]>(`${API_BASE_URL}/pipelines/`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      params,
-    });
+    const response = await axios.get<SavedPipeline[]>(`${API_BASE_URL}/pipelines/`, { params });
     return response.data;
   },
 
@@ -166,81 +98,33 @@ export const pipelineService = {
 
   // Get specific pipeline
   async getPipeline(id: number): Promise<SavedPipeline> {
-    const token = authService.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
-    const response = await axios.get<SavedPipeline>(`${API_BASE_URL}/pipelines/${id}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await axios.get<SavedPipeline>(`${API_BASE_URL}/pipelines/${id}`);
     return response.data;
   },
 
   // Create pipeline
   async createPipeline(data: CreatePipelineRequest): Promise<SavedPipeline> {
-    const token = authService.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
-    const response = await axios.post<SavedPipeline>(`${API_BASE_URL}/pipelines/`, data, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await axios.post<SavedPipeline>(`${API_BASE_URL}/pipelines/`, data);
     return response.data;
   },
 
   // Update pipeline
   async updatePipeline(id: number, data: Partial<CreatePipelineRequest>): Promise<SavedPipeline> {
-    const token = authService.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
-    const response = await axios.put<SavedPipeline>(`${API_BASE_URL}/pipelines/${id}`, data, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    const response = await axios.put<SavedPipeline>(`${API_BASE_URL}/pipelines/${id}`, data);
     return response.data;
   },
 
   // Delete pipeline
   async deletePipeline(id: number): Promise<void> {
-    const token = authService.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
-    await axios.delete(`${API_BASE_URL}/pipelines/${id}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    await axios.delete(`${API_BASE_URL}/pipelines/${id}`);
   },
 
   // Duplicate pipeline
   async duplicatePipeline(id: number, newName: string): Promise<SavedPipeline> {
-    const token = authService.getAccessToken();
-    if (!token) {
-      throw new Error('No access token found');
-    }
-    
     const response = await axios.post<SavedPipeline>(
       `${API_BASE_URL}/pipelines/${id}/duplicate`,
       null,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        params: {
-          new_name: newName,
-        },
-      }
+      { params: { new_name: newName } }
     );
     return response.data;
   },
@@ -248,60 +132,50 @@ export const pipelineService = {
 
 // Track whether a refresh is already in-flight to avoid parallel refresh storms.
 let isRefreshing = false;
-let refreshQueue: Array<(token: string | null) => void> = [];
+let refreshQueue: Array<(ok: boolean) => void> = [];
 
-function processQueue(newToken: string | null) {
-  refreshQueue.forEach((resolve) => resolve(newToken));
+function processQueue(ok: boolean) {
+  refreshQueue.forEach((resolve) => resolve(ok));
   refreshQueue = [];
 }
 
-// Axios interceptor: on 401, attempt a silent refresh then retry the original
-// request once. If the refresh also fails, clear tokens and redirect to /auth.
+// Axios interceptor: on 401, attempt a silent cookie refresh then retry the
+// original request once. The fresh access token arrives as a cookie, so the
+// retry needs no header changes. If the refresh fails, redirect to /auth.
 axios.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+    const isAuthRefresh = originalRequest?.url?.includes('/auth/refresh');
 
-    // Only attempt refresh on 401 responses that haven't already been retried,
-    // and only when we actually have a refresh token to try.
     if (
       error.response?.status === 401 &&
+      originalRequest &&
       !originalRequest._retried &&
-      authService.getRefreshToken()
+      !isAuthRefresh
     ) {
       originalRequest._retried = true;
 
       if (isRefreshing) {
         // Another refresh is in-flight — queue this request until it resolves.
         return new Promise((resolve, reject) => {
-          refreshQueue.push((token) => {
-            if (token) {
-              originalRequest.headers['Authorization'] = `Bearer ${token}`;
-              resolve(axios(originalRequest));
-            } else {
-              reject(error);
-            }
-          });
+          refreshQueue.push((ok) => (ok ? resolve(axios(originalRequest)) : reject(error)));
         });
       }
 
       isRefreshing = true;
       const success = await authService.refreshTokens();
       isRefreshing = false;
+      processQueue(success);
 
       if (success) {
-        const newToken = authService.getAccessToken();
-        processQueue(newToken);
-        originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
         return axios(originalRequest);
-      } else {
-        processQueue(null);
-        const isPublicPage = ['/', '/auth', '/login', '/register', '/app'].includes(
-          window.location.pathname
-        );
-        if (!isPublicPage) {
-          window.location.href = '/auth';
-        }
+      }
+      const isPublicPage = ['/', '/auth', '/login', '/register', '/app'].includes(
+        window.location.pathname
+      );
+      if (!isPublicPage) {
+        window.location.href = '/auth';
       }
     }
 

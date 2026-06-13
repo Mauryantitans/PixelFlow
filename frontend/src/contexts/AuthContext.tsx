@@ -24,17 +24,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return localStorage.getItem('pixelflow_session_id') || '';
   });
 
-  // Check if user is authenticated on mount
+  // Check if the auth cookie is valid on mount (no token in JS to inspect).
   useEffect(() => {
     const initAuth = async () => {
-      const token = authService.getAccessToken();
-      if (token) {
-        try {
-          const userData = await authService.getCurrentUser();
-          setUser(userData);
-        } catch (error) {
-          authService.clearTokens();
-        }
+      try {
+        const userData = await authService.getCurrentUser();
+        setUser(userData);
+      } catch {
+        setUser(null);
       }
       setLoading(false);
     };
@@ -44,9 +41,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string) => {
     try {
-      const authResponse = await authService.login(email, password);
-      authService.setTokens(authResponse.access_token, authResponse.refresh_token);
-      const userData = await authService.getCurrentUser();
+      // Backend sets httpOnly cookies and returns the user record.
+      const userData = await authService.login(email, password);
       setUser(userData);
     } catch (error: any) {
       throw new Error(error.response?.data?.detail || 'Login failed');
@@ -76,9 +72,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     logout,
     isAuthenticated: !!user,
     setUser,
-    setToken: (token: string) => {
-      authService.setTokens(token, '');
-    }
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

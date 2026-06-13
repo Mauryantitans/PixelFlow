@@ -50,8 +50,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   truth for retention/session/cleanup policy (was reading hardcoded constants).
 - Per-IP **rate limiting on upload and processing** endpoints.
 
+### 🔒 Security — httpOnly-cookie auth
+- JWTs are now delivered as **httpOnly cookies** (`pf_access`, `pf_refresh`) instead of
+  `localStorage`, so tokens are no longer readable by JavaScript (mitigates XSS token theft).
+- **CSRF protection** via a double-submit cookie (`pf_csrf` echoed in the `X-CSRF-Token`
+  header, verified by `CSRFMiddleware`).
+- **Refresh-token rotation** + DB revocation on logout, now also wired for Google OAuth.
+- Tokens carry a random `jti` (always-unique); cookie attributes are env-driven
+  (`COOKIE_SECURE`/`COOKIE_SAMESITE`/`COOKIE_DOMAIN`).
+- Guest `session_id` is now a `crypto.randomUUID()` (was a guessable timestamp+random).
+- Deployment: the API is served **same-origin** via a Vercel rewrite (`/api/*` → backend)
+  so cookies are first-party.
+
 ### 🧪 Quality & Infrastructure
-- **Automated tests** (pytest, ~64) + **GitHub Actions CI** (ruff + mypy + pytest, frontend
+- **Automated tests** (pytest, ~71) + **GitHub Actions CI** (ruff + mypy + pytest, frontend
   type-check/tests) + **pre-commit** hooks.
 - Bumped **FastAPI 0.104 → 0.115.6** / **Starlette 0.27 → 0.41.3**, unlocking HTTP-level API tests.
 - **Docker** + `docker-compose` for the full stack.
@@ -68,8 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live-preview status no longer reports "updated" before the rendered image is committed.
 
 ### ⏭️ Deferred (documented for follow-up)
-- httpOnly-cookie auth (move JWT out of localStorage), Redis-backed multi-instance rate limiting,
-  downscale-on-drag preview.
+- Redis-backed multi-instance rate limiting, downscale-on-drag preview.
 
 ---
 

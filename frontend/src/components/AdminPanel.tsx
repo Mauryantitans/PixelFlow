@@ -39,7 +39,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
-  const token = localStorage.getItem('pixelflow_access_token');
+  // Auth travels in the httpOnly cookie (axios withCredentials default).
   const apiBase = `${process.env.REACT_APP_API_URL || 'http://localhost:8000/api'}/admin`;
 
   // Load data on open, but DON'T auto-refresh
@@ -60,16 +60,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     try {
       const [storageResp, cleanupResp, settingsResp, dbOverviewResp] = await Promise.all([
         axios.get(`${apiBase}/storage/overview`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {}
         }),
         axios.get(`${apiBase}/cleanup/stats`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {}
         }),
         axios.get(`${apiBase}/settings`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {}
         }),
         axios.get(`${apiBase}/database/overview`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {}
         })
       ]);
 
@@ -136,7 +136,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
       await axios.put(
         `${apiBase}/settings`,
         updates,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: {} }
       );
       
       setSaved(true);
@@ -144,7 +144,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
       
       // Fetch fresh settings from server to sync everything
       const freshDataResp = await axios.get(`${apiBase}/settings`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {}
       });
       
       // Sync both with the fresh server data
@@ -168,7 +168,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
         await axios.post(
           `${apiBase}/pin/set`,
           { pin },
-          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+          { headers: { 'Content-Type': 'application/json' } }
         );
         setShowPinDialog(false);
         setPin('');
@@ -185,7 +185,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
         await axios.post(
           `${apiBase}/pin/verify`,
           { pin },
-          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+          { headers: { 'Content-Type': 'application/json' } }
         );
         setPinVerified(true);
         setShowPinDialog(false);
@@ -233,10 +233,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     try {
       const [usersResp, sessionsResp] = await Promise.all([
         axios.get(`${apiBase}/database/users?limit=100`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {}
         }),
         axios.get(`${apiBase}/database/sessions?limit=50`, {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: {}
         })
       ]);
 
@@ -268,7 +268,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
       const response = await axios.post(
         `${apiBase}/cleanup/run`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: {} }
       );
       
       alert(`Cleanup complete! Deleted ${response.data.results.total_deleted} items.`);
@@ -285,7 +285,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     setLoadingUserImages(true);
     try {
       const response = await axios.get(`${apiBase}/database/users/${userId}/images`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {}
       });
 
       setUserImages(response.data.images || []);
@@ -301,7 +301,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
     setLoadingUserPipelines(true);
     try {
       const response = await axios.get(`${apiBase}/database/users/${userId}/pipelines`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: {}
       });
 
       setUserPipelines(response.data.pipelines || []);
@@ -337,7 +337,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ isOpen, onClose }) => {
       const response = await axios.post(
         `${apiBase}/database/fix-orphaned-images`,
         {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: {} }
       );
       
       alert(
@@ -384,7 +384,7 @@ Type DELETE to confirm.`)) {
       const response = await axios.delete(
         `${apiBase}/database/users/${userId}`,
         { 
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {},
           params: { confirm: 'DELETE_USER' }
         }
       );
@@ -418,7 +418,7 @@ Type DELETE to confirm.`)) {
     try {
       await axios.delete(
         `${apiBase}/database/images/${imageId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: {} }
       );
       
       // Refresh user images
@@ -446,7 +446,7 @@ Type DELETE to confirm.`)) {
     try {
       await axios.delete(
         `${apiBase}/database/pipelines/${pipelineId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: {} }
       );
       
       // Refresh user pipelines
@@ -482,7 +482,7 @@ Type DELETE to confirm.`)) {
         `${apiBase}/database/delete-all-images`,
         {},
         { 
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {},
           params: { confirm: 'DELETE_ALL_IMAGES' }
         }
       );
